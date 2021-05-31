@@ -59,9 +59,8 @@ class RenderPass final {
     void push_resolve_output(Name name, std::optional<VkClearColorValue> clear);
     void push_input_attachment(Name name, bool self, std::optional<VkClearColorValue> clear);
     void push_texture_input(Name name);
-    void push_dependency(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access);
-    void push_dependent(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access);
-    void push_virtual_dependent(Name name);
+    void push_dependency(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt = false);
+    void push_dependent(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt = false);
 
     void set_exec(std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> exec);
 
@@ -76,6 +75,7 @@ class RenderPass final {
         VkImageLayout layout;
         VkPipelineStageFlags stage;
         VkAccessFlags access;
+        bool virt;
     };
 
     std::optional<std::pair<Name, std::optional<VkClearDepthStencilValue>>> depth_stencil;
@@ -85,7 +85,6 @@ class RenderPass final {
     std::vector<Name> texture_inputs;
     std::vector<std::pair<Name, Dependency>> dependencies;
     std::vector<std::pair<Name, Dependency>> dependents;
-    std::vector<Name> virtual_dependents;
 
     std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> exec;
 };

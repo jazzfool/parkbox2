@@ -1,11 +1,6 @@
 #version 450
 
-#extension GL_ARB_shader_viewport_layer_array : enable
-
 layout(location = 0) in vec3 in_position;
-
-layout(location = 0) out vec4 out_position;
-layout(location = 1) out vec4 out_world_pos;
 
 #define NUM_CASCADES 4
 
@@ -35,12 +30,9 @@ layout(set = 0, binding = 2) uniform LightProjction {
 
 layout(push_constant) uniform PC {
     uint cascade;
-    uint frames;
 };
 
 void main() {
     Instance instance = instance_buf.instances[instance_index_buf.indices[gl_InstanceIndex]];
-    out_world_pos = instance.transform * vec4(in_position, 1.0);
-    gl_Position = view_proj[cascade] * out_world_pos;
-    out_position = gl_Position;
+    gl_Position = view_proj[cascade] * instance.transform * vec4(in_position, 1);
 }

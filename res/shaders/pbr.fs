@@ -40,7 +40,7 @@ layout(set = 0, binding = 8) uniform Uniforms {
     SceneUniforms uniforms;
 };
 
-layout(set = 0, binding = 9) uniform sampler2DArray shadow_map;
+layout(set = 0, binding = 9) uniform sampler2DArrayShadow shadow_map;
 
 layout(set = 0, binding = 10) uniform ShadowUniforms {
     mat4 views[NUM_CASCADES];
@@ -67,42 +67,19 @@ vec3 get_normal_from_map(vec3 base_normal, vec3 texture_normal) {
 
 const mat4 bias_mat = mat4(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5, 0.0, 1.0);
 
-float shadow() {
-    bool ranges[3] = {
-        in_mv_position.z < shadow_uniforms.cascade_splits[0],
-        in_mv_position.z < shadow_uniforms.cascade_splits[1],
-        in_mv_position.z < shadow_uniforms.cascade_splits[2],
-    };
+const float dither[4][4] = {
+    {0.0f, 0.5f, 0.125f, 0.625f}, {0.75f, 0.22f, 0.875f, 0.375f}, {0.1875f, 0.6875f, 0.0625f, 0.5625}, {0.9375f, 0.4375f, 0.8125f, 0.3125}};
 
-    uint cascade = 0;
-    cascade += 1 * uint(ranges[0] && !ranges[1] && !ranges[2]);
-    cascade += 2 * uint(ranges[1] && !ranges[2]);
-    cascade += 3 * uint(ranges[2]);
-
-    vec4 sc = (bias_mat * shadow_uniforms.view_proj[cascade]) * vec4(in_position, 1.0);
-    sc = sc / sc.w;
-
-    float t = sc.z;
-
-    vec2 moments = texture(shadow_map, vec3(sc.xy, cascade)).xy;
-
-    float p = float(t <= moments.x);
-    float var = moments.y - (moments.x * moments.x);
-    var = max(var, 0.0001);
-    float d = t - moments.x;
-    float p_max = var / (var + d * d);
-
-    return max(p, p_max);
-}
-
-float shadow_sample(vec2 base_uv, float u, float v, vec2 texel_size, uint cascadeIdx, float depth, vec2 rpdb) {
+float shadow_sample(vec2 base_uv, float u, float v, vec2 texel_size, uint cascade, float depth, vec2 rpdb) {
     vec2 uv = base_uv + vec2(u, v) * texel_size;
     float z = depth + dot(vec2(u, v) * texel_size, rpdb);
-
-    return ShadowMap.SampleCmpLevelZero(ShadowSamplerPCF, float3(uv, cascadeIdx), z);
+    vec4 s = textureGather(shadow_map, vec3(uv, cascade), z);
+    return (s.x + s.y + s.z + s.w) / 4.0;
 }
 
-float pcf_shadow() {
+float shadow() {
+    const float biases[4] = {0.1, 0.04, 0.0075, 0.002};
+
     bool ranges[3] = {
         in_mv_position.z < shadow_uniforms.cascade_splits[0],
         in_mv_position.z < shadow_uniforms.cascade_splits[1],
@@ -114,14 +91,21 @@ float pcf_shadow() {
     cascade += 2 * uint(ranges[1] && !ranges[2]);
     cascade += 3 * uint(ranges[2]);
 
-    vec4 sc = (bias_mat * shadow_uniforms.view_proj[cascade]) * vec4(in_position, 1.0);
+    vec4 sc =
+        (bias_mat * shadow_uniforms.view_proj[cascade]) * vec4(in_position + in_normal * 0.006 * dither[int(gl_FragCoord.x) % 4][int(gl_FragCoord.y) % 4], 1.0);
     sc = sc / sc.w;
 
+    float z = sc.z;
+    vec3 dx = dFdx(sc.xyz);
+    vec3 dy = dFdy(sc.xyz);
+
     vec2 size = textureSize(shadow_map, 0).xy;
+    vec2 texel_size = 1.0 / size;
+
+    vec2 rpdb = vec2(0.0);
+    z -= biases[cascade] * 0.75;
 
     vec2 uv = sc.xy * size;
-
-    vec2 texel_size = 1.0 / size;
 
     vec2 base_uv;
     base_uv.x = floor(uv.x + 0.5);
@@ -149,17 +133,19 @@ float pcf_shadow() {
     float v1 = (3 + t) / vw1;
     float v2 = t / vw2 + 2;
 
-    sum += uw0 * vw0 * SampleShadowMap(base_uv, u0, v0, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw1 * vw0 * SampleShadowMap(base_uv, u1, v0, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw2 * vw0 * SampleShadowMap(base_uv, u2, v0, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
+    float sum = 0.0;
 
-    sum += uw0 * vw1 * SampleShadowMap(base_uv, u0, v1, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw1 * vw1 * SampleShadowMap(base_uv, u1, v1, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw2 * vw1 * SampleShadowMap(base_uv, u2, v1, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
+    sum += uw0 * vw0 * shadow_sample(base_uv, u0, v0, texel_size, cascade, z, rpdb);
+    sum += uw1 * vw0 * shadow_sample(base_uv, u1, v0, texel_size, cascade, z, rpdb);
+    sum += uw2 * vw0 * shadow_sample(base_uv, u2, v0, texel_size, cascade, z, rpdb);
 
-    sum += uw0 * vw2 * SampleShadowMap(base_uv, u0, v2, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw1 * vw2 * SampleShadowMap(base_uv, u1, v2, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
-    sum += uw2 * vw2 * SampleShadowMap(base_uv, u2, v2, shadowMapSizeInv, cascadeIdx, lightDepth, receiverPlaneDepthBias);
+    sum += uw0 * vw1 * shadow_sample(base_uv, u0, v1, texel_size, cascade, z, rpdb);
+    sum += uw1 * vw1 * shadow_sample(base_uv, u1, v1, texel_size, cascade, z, rpdb);
+    sum += uw2 * vw1 * shadow_sample(base_uv, u2, v1, texel_size, cascade, z, rpdb);
+
+    sum += uw0 * vw2 * shadow_sample(base_uv, u0, v2, texel_size, cascade, z, rpdb);
+    sum += uw1 * vw2 * shadow_sample(base_uv, u1, v2, texel_size, cascade, z, rpdb);
+    sum += uw2 * vw2 * shadow_sample(base_uv, u2, v2, texel_size, cascade, z, rpdb);
 
     return sum * 1.0f / 144;
 }
@@ -194,6 +180,4 @@ void main() {
 
     out_color.rgb += pbr_sun_light(material, pbr_computed, uniforms) * shadow();
     out_color.rgb += pbr_ibl(material, pbr_computed, irradiance_map, prefilter_map, ibl_dfg_lut);
-
-    out_color = vec4(shadow());
 }

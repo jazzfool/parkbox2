@@ -16,7 +16,7 @@
 
 namespace gfx {
 
-ShadowPass::Uniforms ShadowPass::compute_cascades(Context& cx, glm::vec3 jitter) {
+ShadowPass::Uniforms ShadowPass::compute_cascades(Context& cx) {
     static constexpr float SPLIT_LAMBDA = 0.95;
 
     Uniforms out;
@@ -90,8 +90,7 @@ ShadowPass::Uniforms ShadowPass::compute_cascades(Context& cx, glm::vec3 jitter)
         glm::vec3 min_extents = -max_extents;
 
         glm::mat4 light_view_matrix =
-            glm::lookAt(frustum_center - glm::vec3{cx.renderer->pbr_pass.uniforms.sun_dir} * -min_extents.z, frustum_center, {0.f, 1.f, 0.f}) *
-            glm::eulerAngleXYZ(jitter.x, jitter.y, jitter.z);
+            glm::lookAt(frustum_center - glm::vec3{cx.renderer->pbr_pass.uniforms.sun_dir} * -min_extents.z, frustum_center, {0.f, 1.f, 0.f});
         glm::mat4 light_ortho_matrix = glm::ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, 0.f, max_extents.z - min_extents.z);
 
         out.views[i] = light_view_matrix;
@@ -109,51 +108,32 @@ void ShadowPass::init(FrameContext& fcx) {
     load_shader(fcx.cx.shader_cache, "shadow.fs", VK_SHADER_STAGE_FRAGMENT_BIT);
     load_shader(fcx.cx.shader_cache, "fullscreen.vs", VK_SHADER_STAGE_VERTEX_BIT);
 
-    TextureDesc map_desc;
-    map_desc.width = DIM;
-    map_desc.height = DIM;
-    map_desc.layers = NUM_CASCADES;
-    map_desc.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    map_desc.format = VK_FORMAT_R32G32_SFLOAT;
-    map_desc.mips = 1;
-    map_desc.samples = VK_SAMPLE_COUNT_1_BIT;
-    map_desc.depth = 1;
-    map_desc.type = VK_IMAGE_TYPE_2D;
-    map_desc.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    map_desc.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-
-    map = create_texture(fcx.cx, map_desc);
-    map_2 = create_texture(fcx.cx, map_desc);
-
-    for (uint8_t i = 0; i < NUM_CASCADES; ++i) {
-        VkImageViewCreateInfo ivci = {};
-        ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        ivci.image = map.image.image;
-        ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        ivci.components = vk_no_swizzle();
-        ivci.format = map.image.format;
-        ivci.subresourceRange = vk_subresource_range(i, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
-
-        map_views[i] = create_texture(fcx.cx.dev, map.image, ivci);
-
-        ivci.image = map_2.image.image;
-        map_2_views[i] = create_texture(fcx.cx.dev, map_2.image, ivci);
-    }
-
     TextureDesc depth_desc;
     depth_desc.width = DIM;
     depth_desc.height = DIM;
-    depth_desc.layers = 1;
+    depth_desc.layers = NUM_CASCADES;
     depth_desc.aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
     depth_desc.format = VK_FORMAT_D32_SFLOAT;
     depth_desc.mips = 1;
     depth_desc.samples = VK_SAMPLE_COUNT_1_BIT;
     depth_desc.depth = 1;
     depth_desc.type = VK_IMAGE_TYPE_2D;
-    depth_desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depth_desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     depth_desc.view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 
-    depth = create_texture(fcx.cx, depth_desc);
+    depths = create_texture(fcx.cx, depth_desc);
+
+    for (uint8_t i = 0; i < NUM_CASCADES; ++i) {
+        VkImageViewCreateInfo ivci = {};
+        ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        ivci.image = depths.image.image;
+        ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        ivci.components = vk_no_swizzle();
+        ivci.format = depths.image.format;
+        ivci.subresourceRange = vk_subresource_range(i, 1, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+        depth_views[i] = create_texture(fcx.cx.dev, depths.image, ivci);
+    }
 
     VkBufferCreateInfo bci = {};
     bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -162,80 +142,35 @@ void ShadowPass::init(FrameContext& fcx) {
     bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
-    prev_ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
-
-    use_2 = true;
-    first = true;
-    jitter = 0.f;
-    frames = 0;
-    sample = 0;
 }
 
 void ShadowPass::cleanup(FrameContext& fcx) {
-    for (Texture view : map_views) {
+    for (Texture view : depth_views) {
         vkDestroyImageView(fcx.cx.dev, view.view, nullptr);
     }
 
-    for (Texture view : map_2_views) {
-        vkDestroyImageView(fcx.cx.dev, view.view, nullptr);
-    }
-
-    destroy_texture(fcx.cx, map);
-    destroy_texture(fcx.cx, map_2);
-    destroy_texture(fcx.cx, depth);
+    destroy_texture(fcx.cx, depths);
 
     fcx.cx.alloc.destroy(ubo);
-    fcx.cx.alloc.destroy(prev_ubo);
 }
 
 void ShadowPass::add_resources(RenderGraph& rg) {
-    use_2 = !use_2;
-
-    VkImageLayout src_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (first) {
-        first = false;
-        src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    }
-
     PassAttachment map_pa;
-    map_pa.tex = use_2 ? map_2 : map;
-    map_pa.subresource = vk_subresource_range(0, NUM_CASCADES, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
+    map_pa.tex = depths;
+    map_pa.subresource = vk_subresource_range(0, NUM_CASCADES, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT);
     rg.push_attachment({"shadow.map"}, map_pa);
-
-    PassAttachment src_map_pa;
-    src_map_pa.tex = use_2 ? map : map_2;
-    src_map_pa.subresource = vk_subresource_range(0, NUM_CASCADES, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
-    rg.push_attachment({"shadow.map.src"}, src_map_pa);
-    rg.push_initial_layout({"shadow.map.src"}, src_layout);
 
     for (uint8_t i = 0; i < NUM_CASCADES; ++i) {
         PassAttachment map_view_pa;
-        map_view_pa.tex = use_2 ? map_2_views[i] : map_views[i];
-        map_view_pa.subresource = vk_subresource_range(i, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
+        map_view_pa.tex = depth_views[i];
+        map_view_pa.subresource = vk_subresource_range(i, 1, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT);
         rg.push_attachment({fmt::format("shadow.map.cascade.{}", i)}, map_view_pa);
     }
-
-    PassAttachment depth_pa;
-    depth_pa.tex = depth;
-    depth_pa.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT);
-    rg.push_attachment({"shadow.depth"}, depth_pa);
 }
 
 std::vector<RenderPass> ShadowPass::pass(FrameContext& fcx) {
-    static std::random_device rd;
-    static std::uniform_real_distribution<float> j{-1.f, 1.f};
-    static std::mt19937_64 mt{rd()};
-
-    frames++;
-
-    float x = j(mt);
-    float y = j(mt);
-    float z = j(mt);
-
-    vk_mapped_write(fcx.cx.alloc, prev_ubo, &prev, sizeof(Uniforms));
-    const Uniforms uniforms = compute_cascades(fcx.cx, glm::normalize(glm::vec3{x, y, z}) * 0.025f);
+    const Uniforms uniforms = compute_cascades(fcx.cx);
     vk_mapped_write(fcx.cx.alloc, ubo, &uniforms, sizeof(Uniforms));
-    prev = uniforms;
 
     std::vector<RenderPass> passes;
 
@@ -244,11 +179,9 @@ std::vector<RenderPass> ShadowPass::pass(FrameContext& fcx) {
         pass.width = DIM;
         pass.height = DIM;
         pass.layers = 1;
-        pass.set_depth_stencil({"shadow.depth"}, vk_clear_depth(1.f, 0));
-        pass.push_color_output({fmt::format("shadow.map.cascade.{}", i)}, vk_clear_color({0.f, 0.f, 0.f, 0.f}));
-        pass.push_texture_input({"shadow.map.src"});
-        pass.push_dependent(
-            {"shadow.map"}, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        pass.set_depth_stencil({fmt::format("shadow.map.cascade.{}", i)}, vk_clear_depth(1.f, 0));
+        pass.push_dependent({"shadow.map"}, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
         pass.set_exec(std::bind(&ShadowPass::render, this, i, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         passes.push_back(pass);
     }
@@ -264,16 +197,8 @@ void ShadowPass::render(uint32_t cascade, FrameContext& fcx, const RenderGraph& 
     set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     set_info.bind_buffer(fcx.cx.scene.pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     set_info.bind_buffer(ubo, VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    set_info.bind_buffer(prev_ubo, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    set_info.bind_texture(
-        rg.attachment({"shadow.map.src"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
-
-    struct {
-        uint32_t cascade;
-        uint32_t frames;
-    } push_consts{cascade, frames};
 
     if (!fcx.cx.pipeline_cache.contains("shadow.pipeline")) {
         VkPipelineRasterizationStateCreateInfo prsci = vk_rasterization_state_create_info(VK_POLYGON_MODE_FILL);
@@ -285,13 +210,12 @@ void ShadowPass::render(uint32_t cascade, FrameContext& fcx, const RenderGraph& 
         builder.add_shader(fcx.cx.shader_cache.get("shadow.vs"), VK_SHADER_STAGE_VERTEX_BIT);
         builder.add_shader(fcx.cx.shader_cache.get("shadow.fs"), VK_SHADER_STAGE_FRAGMENT_BIT);
         builder.set_rasterization_state(prsci);
-        builder.add_attachment(vk_color_blend_attachment_state());
         builder.set_depth_stencil_state(vk_depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS));
         builder.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         builder.vertex_input<Vertex>(Vertex::Position);
         builder.set_samples(VK_SAMPLE_COUNT_1_BIT);
         builder.push_desc_set(set_info);
-        builder.push_constant(0, sizeof(push_consts), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.push_constant(0, sizeof(uint32_t), VK_SHADER_STAGE_VERTEX_BIT);
 
         fcx.cx.pipeline_cache.add("shadow.pipeline", builder.info());
     }
@@ -303,7 +227,7 @@ void ShadowPass::render(uint32_t cascade, FrameContext& fcx, const RenderGraph& 
 
     vkCmdSetViewport(fcx.cmd, 0, 1, &viewport);
     vkCmdSetScissor(fcx.cmd, 0, 1, &scissor);
-    vkCmdPushConstants(fcx.cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_consts), &push_consts);
+    vkCmdPushConstants(fcx.cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &cascade);
 
     fcx.cx.scene.pass.execute(fcx.cmd, fcx.cx.scene.storage);
 }

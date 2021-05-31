@@ -742,6 +742,8 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
     shadow_sci.maxLod = 1.f;
     shadow_sci.maxAnisotropy = 1.f;
     shadow_sci.mipLodBias = 0.f;
+    shadow_sci.compareEnable = VK_TRUE;
+    shadow_sci.compareOp = VK_COMPARE_OP_LESS;
 
     DescriptorSetInfo set_info;
     set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);

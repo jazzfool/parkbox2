@@ -113,7 +113,7 @@ bool Context::init(GLFWwindow* window) {
 
     vkb::SwapchainBuilder vkb_swapchain_builder{*vkb_device};
     vkb_swapchain_builder.set_desired_extent(width, height);
-    vkb_swapchain_builder.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR);
+    vkb_swapchain_builder.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
     vkb::detail::Result<vkb::Swapchain> vkb_swapchain = vkb_swapchain_builder.build();
 
     swapchain = vkb_swapchain->swapchain;

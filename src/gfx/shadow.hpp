@@ -20,7 +20,6 @@ class ShadowPass final : public GFXPass {
     std::vector<RenderPass> pass(FrameContext& fcx) override;
 
     Buffer ubo;
-    Buffer prev_ubo;
 
   private:
     struct Uniforms final {
@@ -29,21 +28,12 @@ class ShadowPass final : public GFXPass {
         glm::vec4 cascade_splits;
     };
 
-    static Uniforms compute_cascades(Context& cx, glm::vec3 jitter);
+    static Uniforms compute_cascades(Context& cx);
     void render(uint32_t cascade, FrameContext& fcx, const RenderGraph& rg, VkRenderPass pass);
 
     DescriptorKey desc_key;
-    std::array<Texture, NUM_CASCADES> map_views;
-    std::array<Texture, NUM_CASCADES> map_2_views;
-    Texture map;
-    Texture map_2;
-    Texture depth;
-    bool use_2;
-    bool first;
-    float jitter;
-    uint32_t frames;
-    uint32_t sample;
-    Uniforms prev;
+    std::array<Texture, NUM_CASCADES> depth_views;
+    Texture depths;
 };
 
 } // namespace gfx

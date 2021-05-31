@@ -35,16 +35,12 @@ void RenderPass::push_texture_input(Name name) {
     texture_inputs.push_back(name);
 }
 
-void RenderPass::push_dependency(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access) {
-    dependencies.push_back(std::make_pair(name, Dependency{layout, stage, access}));
+void RenderPass::push_dependency(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt) {
+    dependencies.push_back(std::make_pair(name, Dependency{layout, stage, access, virt}));
 }
 
-void RenderPass::push_dependent(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access) {
-    dependents.push_back(std::make_pair(name, Dependency{layout, stage, access}));
-}
-
-void RenderPass::push_virtual_dependent(Name name) {
-    virtual_dependents.push_back(name);
+void RenderPass::push_dependent(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt) {
+    dependents.push_back(std::make_pair(name, Dependency{layout, stage, access, virt}));
 }
 
 void RenderPass::set_exec(std::function<void(FrameContext&, const RenderGraph&, VkRenderPass)> exec) {
@@ -149,9 +145,6 @@ void RenderGraph::exec(FrameContext& fcx, RenderGraphCache& cache) {
             PK_ASSERT(attachments.count(res));
 
         for (const auto& [res, _] : pass.dependents)
-            PK_ASSERT(attachments.count(res));
-
-        for (const Name& res : pass.virtual_dependents)
             PK_ASSERT(attachments.count(res));
     }
 
@@ -328,7 +321,8 @@ void RenderGraph::exec(FrameContext& fcx, RenderGraphCache& cache) {
             src_stages |= attachment.stage;
             dst_stages |= dst_stage;
 
-            barriers.push_back(make_barrier(attachment, access, layout));
+            if (!dep.virt)
+                barriers.push_back(make_barrier(attachment, access, layout));
 
             attachment.access = access;
             attachment.layout = layout;
@@ -499,7 +493,8 @@ void RenderGraph::exec(FrameContext& fcx, RenderGraphCache& cache) {
             src_stages |= attachment.stage;
             dst_stages |= dst_stage;
 
-            barriers.push_back(make_barrier(attachment, access, layout));
+            if (!dep.virt)
+                barriers.push_back(make_barrier(attachment, access, layout));
 
             attachment.access = access;
             attachment.layout = layout;
@@ -585,7 +580,6 @@ void RenderGraph::push_writers(std::vector<std::size_t>& all_writers, Name res) 
         return std::find(pass.color_outputs.begin(), pass.color_outputs.end(), res) != pass.color_outputs.end() ||
                std::find(pass.resolve_outputs.begin(), pass.resolve_outputs.end(), res) != pass.resolve_outputs.end() ||
                std::find(pass.dependents.begin(), pass.dependents.end(), res) != pass.dependents.end() ||
-               std::find(pass.virtual_dependents.begin(), pass.virtual_dependents.end(), res) != pass.virtual_dependents.end() ||
                (pass.depth_stencil.has_value() ? pass.depth_stencil.value().second.has_value() && pass.depth_stencil.value().first == res : false);
     });
 
