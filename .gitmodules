@@ -1,0 +1,27 @@
+[submodule "ext/glfw"]
+	path = ext/glfw
+	url = https://github.com/glfw/glfw
+[submodule "ext/volk"]
+	path = ext/volk
+	url = https://github.com/zeux/volk
+[submodule "ext/spdlog"]
+	path = ext/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "ext/vkb"]
+	path = ext/vkb
+	url = https://github.com/charles-lunarg/vk-bootstrap
+[submodule "ext/tinyobjloader"]
+	path = ext/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader
+[submodule "ext/entt"]
+	path = ext/entt
+	url = https://github.com/skypjack/entt
+[submodule "ext/linalg"]
+	path = ext/linalg
+	url = https://github.com/sgorsten/linalg
+[submodule "ext/ftl"]
+	path = ext/ftl
+	url = https://github.com/RichieSams/FiberTaskingLib
+[submodule "ext/glm"]
+	path = ext/glm
+	url = https://github.com/g-truc/glm

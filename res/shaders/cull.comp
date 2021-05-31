@@ -1,0 +1,69 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+const uint MAX_INSTANCES_PER_BATCH = 4096;
+
+struct Instance {
+    mat4 transform;
+    uint material;
+    int batch_idx;
+    vec2 uv_scale;
+    vec4 bounds;
+};
+
+struct VkDrawCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int vertexOffset;
+    uint firstInstance;
+};
+
+layout(set = 0, binding = 0) buffer DrawCommands {
+    VkDrawCommand cmds[];
+}
+draw_cmds;
+
+layout(set = 0, binding = 1) readonly buffer InstanceBuffer {
+    Instance instances[];
+}
+instance_buf;
+
+layout(set = 0, binding = 2) writeonly buffer InstanceIndexBuffer {
+    uint indices[];
+}
+instance_index_buf;
+
+layout(set = 0, binding = 3) uniform CullData {
+    vec4 frustum;
+    vec2 near_far;
+    mat4 view;
+}
+cull_data;
+
+bool in_frustum(vec4 sphere) {
+    vec3 center = sphere.xyz;
+    float radius = sphere.w;
+
+    bool visible = true;
+    visible = visible && center.z * cull_data.frustum[1] - abs(center.x) * cull_data.frustum[0] > -radius;
+    visible = visible && center.z * cull_data.frustum[3] - abs(center.y) * cull_data.frustum[2] > -radius;
+    visible = visible && center.z + radius > cull_data.near_far[0] && center.z - radius < cull_data.near_far[1];
+
+    return true;
+    return visible;
+}
+
+void main() {
+    // TODO(jazzfool): implement culling
+
+    uint instance_idx = gl_GlobalInvocationID.x;
+    uint batch_idx = instance_buf.instances[instance_idx].batch_idx;
+
+    if (batch_idx != -1 && in_frustum(instance_buf.instances[instance_idx].bounds)) {
+        uint base_offset = atomicAdd(draw_cmds.cmds[batch_idx].instanceCount, 1);
+        uint offset = base_offset + draw_cmds.cmds[batch_idx].firstInstance;
+        instance_index_buf.indices[offset] = instance_idx;
+    }
+}
