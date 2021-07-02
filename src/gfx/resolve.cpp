@@ -13,7 +13,7 @@ void ResolvePass::init(FrameContext& fcx) {
 void ResolvePass::cleanup(FrameContext& fcx) {
 }
 
-void ResolvePass::add_resources(RenderGraph& rg) {
+void ResolvePass::add_resources(FrameContext& fcx, RenderGraph& rg) {
 }
 
 std::vector<RenderPass> ResolvePass::pass(FrameContext& fcx) {

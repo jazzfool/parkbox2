@@ -2,7 +2,6 @@
 
 #include "vk_helpers.hpp"
 
-#include <VkBootstrap.h>
 #include <spdlog/spdlog.h>
 #include <GLFW/glfw3.h>
 
@@ -18,12 +17,25 @@ void glfw_scroll(GLFWwindow* window, double x, double y) {
     cx->on_scroll(x, y);
 }
 
+void glfw_resize(GLFWwindow* window, int32_t, int32_t) {
+    Context* cx = reinterpret_cast<Context*>(glfwGetWindowUserPointer(window));
+    vk_log(vkDeviceWaitIdle(cx->dev));
+    cx->sc_cleanup();
+    int32_t width, height;
+    glfwGetFramebufferSize(cx->window, &width, &height);
+    cx->sc_init(width, height);
+    cx->rt_cache.reset();
+    cx->on_resize(width, height);
+}
+
 bool Context::init(GLFWwindow* window) {
     this->window = window;
 
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, glfw_mouse_move);
     glfwSetScrollCallback(window, glfw_scroll);
+    // TODO(jazzfool): consider using glfwSetWindowRefreshCallback instead for responsive resizing
+    glfwSetWindowSizeCallback(window, glfw_resize);
 
     int fb_width = 0, fb_height = 0;
     glfwGetFramebufferSize(window, &fb_width, &fb_height);
@@ -97,6 +109,7 @@ bool Context::init(GLFWwindow* window) {
     vkb::detail::Result<vkb::Device> vkb_device = vkb_device_builder.build();
 
     dev = vkb_device->device;
+    vkb_dev = *vkb_device;
 
     gfx_queue = *vkb_device->get_queue(vkb::QueueType::graphics);
     transfer_queue = *vkb_device->get_queue(vkb::QueueType::transfer);
@@ -108,18 +121,7 @@ bool Context::init(GLFWwindow* window) {
     present_queue_idx = *vkb_device->get_queue_index(vkb::QueueType::present);
     compute_queue_idx = *vkb_device->get_queue_index(vkb::QueueType::compute);
 
-    int32_t width, height;
-    glfwGetWindowSize(window, &width, &height);
-
-    vkb::SwapchainBuilder vkb_swapchain_builder{*vkb_device};
-    vkb_swapchain_builder.set_desired_extent(width, height);
-    vkb_swapchain_builder.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
-    vkb::detail::Result<vkb::Swapchain> vkb_swapchain = vkb_swapchain_builder.build();
-
-    swapchain = vkb_swapchain->swapchain;
-    swapchain_images = *vkb_swapchain->get_images();
-    swapchain_views = *vkb_swapchain->get_image_views();
-    swapchain_format = vkb_swapchain->image_format;
+    sc_init(width, height);
 
     alloc.init(*this);
     frame_pool.init(*this);
@@ -128,8 +130,24 @@ bool Context::init(GLFWwindow* window) {
     pipeline_cache.init(dev, descriptor_cache);
     sampler_cache.init(dev);
     rg_cache.init(dev);
+    rt_cache.init(*this);
 
     return true;
+}
+
+void Context::sc_init(int32_t width, int32_t height) {
+    this->width = width;
+    this->height = height;
+
+    vkb::SwapchainBuilder vkb_swapchain_builder{vkb_dev};
+    vkb_swapchain_builder.set_desired_extent(width, height);
+    vkb_swapchain_builder.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR);
+    vkb::detail::Result<vkb::Swapchain> vkb_swapchain = vkb_swapchain_builder.build();
+
+    swapchain = vkb_swapchain->swapchain;
+    swapchain_images = *vkb_swapchain->get_images();
+    swapchain_views = *vkb_swapchain->get_image_views();
+    swapchain_format = vkb_swapchain->image_format;
 }
 
 void Context::post_init(FrameContext& fcx) {
@@ -142,7 +160,12 @@ void Context::pre_cleanup(FrameContext& fcx) {
     scene.storage.cleanup(fcx);
 }
 
+void Context::sc_cleanup() {
+    vkDestroySwapchainKHR(dev, swapchain, nullptr);
+}
+
 void Context::cleanup() {
+    rt_cache.cleanup();
     rg_cache.cleanup();
     sampler_cache.cleanup();
     pipeline_cache.cleanup();
@@ -151,7 +174,6 @@ void Context::cleanup() {
     frame_pool.cleanup();
     alloc.cleanup();
 
-    vkDestroySwapchainKHR(dev, swapchain, nullptr);
     vkDestroyDevice(dev, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);

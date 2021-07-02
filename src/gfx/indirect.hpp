@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <optional>
 #include <glm/mat4x4.hpp>
+#include <unordered_set>
 
 namespace gfx {
 
@@ -71,10 +72,10 @@ class IndirectStorage final {
     uint32_t push_material(IndirectMaterial mat);
 
     BufferAllocation allocate_vertices(uint64_t num_verts);
-    void free_vertices(BufferAllocation& alloc);
+    void free_vertices(const BufferAllocation& alloc);
 
     BufferAllocation allocate_indices(uint64_t num_inds);
-    void free_indices(BufferAllocation& alloc);
+    void free_indices(const BufferAllocation& alloc);
 
     Buffer vertex_buffer() const;
     Buffer index_buffer() const;
@@ -104,7 +105,7 @@ struct IndirectObjectHandle final {
 
 class IndirectMeshPass final {
   public:
-    static constexpr inline uint32_t MAX_OBJECTS = 65536;
+    static constexpr inline uint32_t MAX_OBJECTS = 4096;
 
     struct Uniforms final {
         glm::vec4 frustum;
@@ -115,11 +116,12 @@ class IndirectMeshPass final {
     void init(FrameContext& fcx);
     void cleanup(FrameContext& fcx);
 
-    void push_mesh(IndirectMeshKey mesh, glm::vec4 sphere_bounds);
+    void push_mesh(IndirectMeshKey mesh, glm::vec3 center, float radius);
+    void update_mesh(IndirectMeshKey old_mesh, IndirectMeshKey new_mesh, glm::vec3 center, float radius);
 
-    IndirectObjectHandle push_object(IndirectObject obj);
+    IndirectObjectHandle push_object(Context& cx, IndirectObject obj);
     bool remove_object(IndirectObjectHandle h);
-    void update_object(IndirectObjectHandle h);
+    void update_object(Context& cx, IndirectObjectHandle h);
     IndirectObject& object(IndirectObjectHandle h);
     const IndirectObject& object(IndirectObjectHandle h) const;
 
@@ -151,10 +153,13 @@ class IndirectMeshPass final {
     Buffer draw_cmds;
     Buffer draw_staging;
     Buffer ubo;
-    std::unordered_map<IndirectMeshKey, Cache<std::pair<IndirectObject, std::size_t>>> batches; // 1 batch = 1 draw = 1 mesh = n instances
-    std::unordered_map<IndirectMeshKey, glm::vec4> mesh_bounds;
+
+    std::unordered_map<IndirectMeshKey, Cache<std::pair<IndirectObject, std::size_t>>> batches;
+    std::unordered_map<IndirectMeshKey, std::pair<glm::vec3, float>> mesh_bounds;
     std::vector<IndirectMeshKey> batch_list;
     std::vector<GPUInstance> instances;
+    std::vector<BufferCopy> instance_writes;
+    std::unordered_set<std::size_t> instance_updates;
 };
 
 } // namespace gfx

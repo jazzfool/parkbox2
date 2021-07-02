@@ -8,12 +8,15 @@
 #include "mesh.hpp"
 #include "camera.hpp"
 #include "gfx/renderer.hpp"
+#include "viz.hpp"
+#include "plant.hpp"
 
 #include <fstream>
 #include <spdlog/fmt/fmt.h>
 #include <tiny_obj_loader.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/component_wise.hpp>
+#include <glm/gtx/norm.hpp>
 
 namespace world {
 
@@ -24,11 +27,13 @@ glm::vec4 v3norm(glm::vec4 p) {
 void World::begin(gfx::FrameContext& fcx) {
     cx = &fcx.cx;
 
+    fcx.cx.on_resize.connect_delegate(delegate<&World::set_perspective>(this));
+
     on_mouse_move = {fcx.cx.on_mouse_move, fcx.cx.on_mouse_move.connect_delegate<&World::mouse_move>(this)};
     on_scroll = {fcx.cx.on_scroll, fcx.cx.on_scroll.connect_delegate<&World::scroll>(this)};
 
     main_camera = spawn_camera(*this);
-    perspective = glm::perspective(glm::radians(60.f), static_cast<float>(fcx.cx.width) / static_cast<float>(fcx.cx.height), 0.1f, 100.f);
+    set_perspective(fcx.cx.width, fcx.cx.height);
 
     add_texture(fcx, "metal.albedo", "metal_albedo.png", true);
     add_texture(fcx, "metal.roughness", "metal_roughness.png", false, VK_FORMAT_R8G8B8A8_UNORM);
@@ -40,6 +45,7 @@ void World::begin(gfx::FrameContext& fcx) {
     add_texture(fcx, "white", "white.jpg", false, VK_FORMAT_R8G8B8A8_UNORM);
     add_texture(fcx, "flat", "flat.jpg", false, VK_FORMAT_R8G8B8A8_UNORM);
     add_texture(fcx, "gray", "gray.jpg");
+    add_texture(fcx, "purple", "purple.png");
 
     gfx::IndirectMaterial mat;
     mat.albedo = texture("metal.albedo");
@@ -55,8 +61,16 @@ void World::begin(gfx::FrameContext& fcx) {
     floor_mat.normal = texture("flat");
     floor_mat.ao = texture("white");
 
+    gfx::IndirectMaterial purple_mat;
+    purple_mat.albedo = texture("purple");
+    purple_mat.roughness = texture("white");
+    purple_mat.metallic = texture("black");
+    purple_mat.normal = texture("flat");
+    purple_mat.ao = texture("white");
+
     add_material(fcx.cx, "metal", mat);
     add_material(fcx.cx, "floor", floor_mat);
+    add_material(fcx.cx, "purple", purple_mat);
     add_static_mesh(fcx, "cube", "cube.obj");
     add_static_mesh(fcx, "plane", "plane.obj");
     add_static_mesh(fcx, "sphere", "sphere.obj");
@@ -64,10 +78,10 @@ void World::begin(gfx::FrameContext& fcx) {
     entt::entity floor = reg.create();
 
     MeshComponent mesh;
-    mesh.gpu_object = add_object(fcx.cx, material("floor"), static_mesh("cube"), {48.f, 48.f});
     mesh.uv_scale = {48.f, 48.f};
     mesh.material = material("floor");
     mesh.mesh = static_mesh("cube");
+    add_object(fcx.cx, mesh);
 
     TransformComponent transform;
     transform.scale = {6.f, 0.1f, 6.f};
@@ -77,9 +91,9 @@ void World::begin(gfx::FrameContext& fcx) {
 
     gpu_mesh_update(*this, floor);
 
-    entt::entity cube = spawn_grass(fcx, *this);
-    reg.get<TransformComponent>(cube).pos.y -= 1.f;
-    gpu_mesh_update(*this, cube);
+    spawn_plant(fcx, *this);
+
+    env.growth = 1000.f;
 }
 
 void World::end(gfx::FrameContext& fcx) {
@@ -95,7 +109,7 @@ gfx::IndirectObjectHandle World::add_object(gfx::Context& cx, uint32_t material,
     obj.transform = glm::identity<glm::mat4>();
     obj.mesh = mesh;
     obj.uv_scale = uv_scale;
-    return cx.scene.pass.push_object(obj);
+    return cx.scene.pass.push_object(cx, obj);
 }
 
 void World::add_object(gfx::Context& cx, MeshComponent& mesh) {
@@ -145,10 +159,8 @@ gfx::IndirectMeshKey World::add_static_mesh(gfx::FrameContext& fcx, const std::s
     tinyobj::LoadObj(&attrib, &shapes, nullptr, nullptr, nullptr, &f, nullptr);
     f.close();
 
-    glm::vec3 min = {INFINITY, INFINITY, INFINITY};
-    glm::vec3 max = {-INFINITY, -INFINITY, -INFINITY};
-    glm::vec3 center = {0.f, 0.f, 0.f};
-    uint32_t count = 0;
+    glm::vec3 min{INFINITY, INFINITY, INFINITY};
+    glm::vec3 max{-INFINITY, -INFINITY, -INFINITY};
 
     std::unordered_map<gfx::Vertex, uint32_t> unique_verts;
 
@@ -179,22 +191,19 @@ gfx::IndirectMeshKey World::add_static_mesh(gfx::FrameContext& fcx, const std::s
 
             min = glm::min(min, vert.position);
             max = glm::max(max, vert.position);
-            center += vert.position;
-            count++;
         }
     }
 
-    center /= static_cast<float>(count);
-    const float radius = std::max(glm::length(center - min), glm::length(center - max));
+    const glm::vec3 center = (min + max) / 2.f;
+    const float radius = std::sqrt(std::max(glm::length2(center - min), glm::length2(center - max)));
 
-    StaticMesh mesh = {
-        fcx.cx.scene.storage.allocate_vertices(vertices.size()), fcx.cx.scene.storage.allocate_indices(indices.size()), min, max, glm::vec4{center, radius}};
+    StaticMesh mesh{fcx.cx.scene.storage.allocate_vertices(vertices.size()), fcx.cx.scene.storage.allocate_indices(indices.size()), min, max};
 
     fcx.stage(mesh.vertices.buffer, vertices.data());
     fcx.stage(mesh.indices.buffer, indices.data());
 
     const gfx::IndirectMeshKey mk = gfx::indirect_mesh_key(mesh.vertices, mesh.indices);
-    fcx.cx.scene.pass.push_mesh(mk, mesh.sphere_bounds);
+    fcx.cx.scene.pass.push_mesh(mk, center, radius);
 
     static_meshes.emplace(name, std::move(mesh));
 
@@ -214,8 +223,13 @@ gfx::IndirectMeshKey World::static_mesh(const std::string& name) const {
     return gfx::indirect_mesh_key(sm.vertices, sm.indices);
 }
 
-void World::update(gfx::FrameContext& fcx) {
-    camera_system(fcx, *this);
+void World::update(gfx::FrameContext& fcx, float dt) {
+    env.growth = 1000.f;
+    env.sun_dir = glm::normalize(-glm::vec3{1.f, 2.f, -1.f});
+    env.gravity_up = glm::vec3{0.f, -1.f, 0.f};
+
+    plant_system(fcx, *this, env);
+    camera_system(fcx, *this, dt);
     passive_system(fcx, *this);
 
     const CameraComponent cam = reg.get<CameraComponent>(main_camera);
@@ -241,6 +255,10 @@ void World::mouse_move(double x, double y) {
 
 void World::scroll(double x, double y) {
     camera_zoom(*cx, *this, static_cast<float>(x), static_cast<float>(y));
+}
+
+void World::set_perspective(int32_t w, int32_t h) {
+    perspective = glm::perspective(glm::radians(60.f), static_cast<float>(w) / static_cast<float>(h), 0.1f, 100.f);
 }
 
 } // namespace world

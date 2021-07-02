@@ -1,5 +1,9 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive : require
+
+#include "common.glsl"
+
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(binding = 0) uniform samplerCube cube_map;
@@ -50,8 +54,6 @@ float radicalinverse_vdc(uint bits) {
 vec2 hammersley(uint i, uint N) {
     return vec2(float(i) / float(N), radicalinverse_vdc(i));
 }
-
-#define PI 3.14159265359
 
 vec3 importance_sample_ggx(vec2 Xi, vec3 N, float roughness) {
     float a = roughness * roughness;

@@ -5,6 +5,8 @@
 #include "resolve.hpp"
 #include "world/world.hpp"
 #include "shadow.hpp"
+#include "ssao.hpp"
+#include "prepass.hpp"
 
 #include <vector>
 #include <array>
@@ -25,6 +27,8 @@ class Renderer final {
     CompositePass composite_pass;
     ResolvePass resolve_pass;
     ShadowPass shadow_pass;
+    SSAOPass ssao_pass;
+    PrepassPass prepass_pass;
 
   private:
     void render();
@@ -36,6 +40,9 @@ class Renderer final {
     VkFence render_fence;
 
     world::World world;
+
+    double time;
+    double curr_time;
 };
 
 } // namespace gfx

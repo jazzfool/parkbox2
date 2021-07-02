@@ -9,7 +9,12 @@ namespace gfx {
 void CompositePass::init(FrameContext& fcx) {
     load_shader(fcx.cx.shader_cache, "fullscreen.vs", VK_SHADER_STAGE_VERTEX_BIT);
     load_shader(fcx.cx.shader_cache, "composite.fs", VK_SHADER_STAGE_FRAGMENT_BIT);
+}
 
+void CompositePass::cleanup(FrameContext& fcx) {
+}
+
+void CompositePass::add_resources(FrameContext& fcx, RenderGraph& rg) {
     TextureDesc in_desc;
     in_desc.width = fcx.cx.width;
     in_desc.height = fcx.cx.height;
@@ -17,14 +22,8 @@ void CompositePass::init(FrameContext& fcx) {
     in_desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
     in_desc.samples = VK_SAMPLE_COUNT_1_BIT;
 
-    in = create_texture(fcx.cx, in_desc);
-}
+    const Texture in = fcx.cx.rt_cache.get("composite.in", in_desc);
 
-void CompositePass::cleanup(FrameContext& fcx) {
-    destroy_texture(fcx.cx, in);
-}
-
-void CompositePass::add_resources(RenderGraph& rg) {
     PassAttachment pa_in;
     pa_in.tex = in;
     pa_in.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);

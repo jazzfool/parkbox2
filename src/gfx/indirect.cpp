@@ -9,6 +9,7 @@
 #include <array>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/component_wise.hpp>
+#include <glm/gtx/norm.hpp>
 
 bool gfx::IndirectMeshKey::operator==(const IndirectMeshKey& other) const noexcept {
     return vertex_offset == other.vertex_offset && index_offset == other.index_offset && num_indices == other.num_indices;
@@ -106,7 +107,7 @@ BufferAllocation IndirectStorage::allocate_vertices(uint64_t num_verts) {
     return vx_arena->alloc(num_verts * sizeof(Vertex));
 }
 
-void IndirectStorage::free_vertices(BufferAllocation& alloc) {
+void IndirectStorage::free_vertices(const BufferAllocation& alloc) {
     vx_arena->free(alloc);
 }
 
@@ -114,7 +115,7 @@ BufferAllocation IndirectStorage::allocate_indices(uint64_t num_inds) {
     return ix_arena->alloc(num_inds * sizeof(uint32_t));
 }
 
-void IndirectStorage::free_indices(BufferAllocation& alloc) {
+void IndirectStorage::free_indices(const BufferAllocation& alloc) {
     ix_arena->free(alloc);
 }
 
@@ -213,13 +214,24 @@ void IndirectMeshPass::cleanup(FrameContext& fcx) {
     vkDestroyEvent(fcx.cx.dev, event, nullptr);
 }
 
-void IndirectMeshPass::push_mesh(IndirectMeshKey mesh, glm::vec4 sphere_bounds) {
+void IndirectMeshPass::push_mesh(IndirectMeshKey mesh, glm::vec3 center, float radius) {
     batches.emplace(mesh, Cache<std::pair<IndirectObject, std::size_t>>{});
     batch_list.push_back(mesh);
-    mesh_bounds.emplace(mesh, sphere_bounds);
+    mesh_bounds.emplace(mesh, std::make_pair(center, radius));
 }
 
-IndirectObjectHandle IndirectMeshPass::push_object(IndirectObject obj) {
+void IndirectMeshPass::update_mesh(IndirectMeshKey old_mesh, IndirectMeshKey new_mesh, glm::vec3 center, float radius) {
+    Cache<std::pair<IndirectObject, std::size_t>> val = batches.at(old_mesh);
+    batches.erase(old_mesh);
+    batches.emplace(new_mesh, val);
+
+    *std::find(batch_list.begin(), batch_list.end(), old_mesh) = new_mesh;
+
+    mesh_bounds.erase(old_mesh);
+    mesh_bounds.emplace(new_mesh, std::make_pair(center, radius));
+}
+
+IndirectObjectHandle IndirectMeshPass::push_object(Context& cx, IndirectObject obj) {
     GPUInstance instance;
     instance.transform = obj.transform;
     instance.material = obj.material;
@@ -229,7 +241,7 @@ IndirectObjectHandle IndirectMeshPass::push_object(IndirectObject obj) {
 
     const IndirectObjectHandle h = {batches.at(obj.mesh).push(std::make_pair(obj, instances.size() - 1)), obj.mesh};
 
-    update_object(h); // calculate bounds
+    update_object(cx, h); // calculate bounds
 
     return h;
 }
@@ -244,25 +256,35 @@ bool IndirectMeshPass::remove_object(IndirectObjectHandle h) {
     }
 }
 
-void IndirectMeshPass::update_object(IndirectObjectHandle h) {
+void IndirectMeshPass::update_object(Context& cx, IndirectObjectHandle h) {
     const auto& [instance, idx] = batches.at(h.mesh).get(h.handle);
     instances[idx].transform = instance.transform;
     instances[idx].material = instance.material;
     instances[idx].uv_scale = instance.uv_scale;
 
-    glm::vec3 scale;
-    glm::quat rot;
-    glm::vec3 translate;
-    glm::vec3 skew;
-    glm::vec4 persp;
+    auto [center, radius] = mesh_bounds.at(h.mesh);
 
-    glm::decompose(instance.transform, scale, rot, translate, skew, persp);
+    center = instance.transform * glm::vec4{center, 1.f};
+    radius *= std::sqrt(glm::compMax(glm::vec3{
+        glm::length2(glm::vec3{instance.transform[0]}),
+        glm::length2(glm::vec3{instance.transform[1]}),
+        glm::length2(glm::vec3{instance.transform[2]}),
+    }));
 
-    glm::vec4 bounds = mesh_bounds.at(h.mesh);
-    bounds.w *= glm::compMax(scale);
-    bounds += glm::vec4{translate, 0.};
+    instances[idx].bounds = glm::vec4{center, radius};
 
-    instances[idx].bounds = bounds;
+    vk_mapped_write(cx.alloc, instance_staging.slice(sizeof(GPUInstance) * idx, sizeof(GPUInstance)), &instances[idx], sizeof(GPUInstance));
+
+    if (instance_updates.count(idx) == 0) {
+        instance_updates.insert(idx);
+
+        BufferCopy copy;
+        copy.src_offset = sizeof(GPUInstance) * idx;
+        copy.dst_offset = copy.src_offset;
+        copy.size = sizeof(GPUInstance);
+
+        instance_writes.push_back(copy);
+    }
 }
 
 IndirectObject& IndirectMeshPass::object(IndirectObjectHandle h) {
@@ -294,8 +316,11 @@ void IndirectMeshPass::prepare(FrameContext& fcx) {
     vk_mapped_write(fcx.cx.alloc, draw_staging, draws.data(), sizeof(VkDrawIndexedIndirectCommand) * draws.size());
     fcx.copy(draw_staging, draw_cmds);
 
-    vk_mapped_write(fcx.cx.alloc, instance_staging, instances.data(), sizeof(GPUInstance) * instances.size());
-    fcx.copy(instance_staging, instance_buf);
+    if (!instance_writes.empty()) {
+        fcx.multicopy(instance_staging, instance_buf, instance_writes);
+        instance_writes.clear();
+        instance_updates.clear();
+    }
 
     vk_mapped_write(fcx.cx.alloc, ubo, &uniforms, sizeof(Uniforms));
 

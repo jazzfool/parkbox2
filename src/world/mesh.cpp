@@ -18,7 +18,7 @@ void gpu_mesh_update(World& w, entt::entity e) {
     obj.mesh = mesh.mesh;
     obj.uv_scale = mesh.uv_scale;
 
-    w.cx->scene.pass.update_object(mesh.gpu_object);
+    w.cx->scene.pass.update_object(*w.cx, mesh.gpu_object);
 }
 
 } // namespace world

@@ -46,12 +46,13 @@ bool in_frustum(vec4 sphere) {
     vec3 center = sphere.xyz;
     float radius = sphere.w;
 
+    center = (cull_data.view * vec4(center, 1.0)).xyz;
+
     bool visible = true;
-    visible = visible && center.z * cull_data.frustum[1] - abs(center.x) * cull_data.frustum[0] > -radius;
+    // visible = visible && center.z * cull_data.frustum[1] - abs(center.x) * cull_data.frustum[0] > -radius;
     visible = visible && center.z * cull_data.frustum[3] - abs(center.y) * cull_data.frustum[2] > -radius;
     visible = visible && center.z + radius > cull_data.near_far[0] && center.z - radius < cull_data.near_far[1];
 
-    return true;
     return visible;
 }
 

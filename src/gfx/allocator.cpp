@@ -32,7 +32,7 @@ FreeListAllocator::FreeListAllocator(VkDeviceSize size) : size{size} {
 bool FreeListAllocator::alloc(VkDeviceSize size, ContiguousAllocation& out) {
     // no more memory available at all
     if (frees.empty() || size == 0)
-        throw false;
+        return false;
     VkDeviceSize base = 0;
     VkDeviceSize total_size = 0;
     // std::map orders by key ascending

@@ -6,6 +6,7 @@
 #include <future>
 #include <vector>
 #include <functional>
+#include <span.hpp>
 
 namespace gfx {
 
@@ -28,6 +29,7 @@ class FrameContext final {
     FrameContext& operator=(const FrameContext&) = delete;
 
     void copy(Buffer src, Buffer dst);
+    void multicopy(Buffer src, Buffer dst, tcb::span<BufferCopy> copies);
     void copy_to_image(Buffer src, Image dst, VkImageLayout layout, uint32_t bytes_per_pixel, VkImageSubresourceLayers subresource);
     void stage(Buffer dst, const void* data);
 

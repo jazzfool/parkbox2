@@ -9,10 +9,12 @@
 #include "scene.hpp"
 #include "signal.hpp"
 #include "render_graph.hpp"
+#include "rt_cache.hpp"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>
 #include <entt/entt.hpp>
+#include <VkBootstrap.h>
 
 struct GLFWwindow;
 
@@ -22,8 +24,10 @@ class Renderer;
 
 struct Context {
     bool init(GLFWwindow* window);
+    void sc_init(int32_t width, int32_t height);
     void post_init(FrameContext& fcx);
     void pre_cleanup(FrameContext& fcx);
+    void sc_cleanup();
     void cleanup();
 
     GLFWwindow* window;
@@ -36,6 +40,7 @@ struct Context {
     VkSwapchainKHR swapchain;
     VkPhysicalDevice phys_dev;
     VkDevice dev;
+    vkb::Device vkb_dev;
 
     std::vector<VkImage> swapchain_images;
     std::vector<VkImageView> swapchain_views;
@@ -58,13 +63,15 @@ struct Context {
     PipelineCache pipeline_cache;
     SamplerCache sampler_cache;
     RenderGraphCache rg_cache;
+    RenderTargetCache rt_cache;
 
     Scene scene;
 
     Signal<double, double> on_mouse_move;
     Signal<double, double> on_scroll;
+    Signal<int32_t, int32_t> on_resize;
 
-    Renderer* renderer;
+    Renderer* renderer; // TODO(jazzfool): this pointer is ugly to have here, remove it at some point
 };
 
 } // namespace gfx

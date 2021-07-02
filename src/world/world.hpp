@@ -4,6 +4,7 @@
 #include "gfx/indirect.hpp"
 #include "gfx/mesh.hpp"
 #include "signal.hpp"
+#include "plant.hpp"
 
 #include <unordered_map>
 #include <string>
@@ -25,7 +26,6 @@ class World final {
         gfx::BufferAllocation indices;
         glm::vec3 min;
         glm::vec3 max;
-        glm::vec4 sphere_bounds;
     };
 
     void begin(gfx::FrameContext& fcx);
@@ -42,7 +42,7 @@ class World final {
     uint32_t material(const std::string& name) const;
     gfx::IndirectMeshKey static_mesh(const std::string& name) const;
 
-    void update(gfx::FrameContext& fcx);
+    void update(gfx::FrameContext& fcx, float dt);
 
     entt::registry reg;
 
@@ -55,12 +55,16 @@ class World final {
     void mouse_move(double x, double y);
     void scroll(double x, double y);
 
+    void set_perspective(int32_t w, int32_t h);
+
     std::unordered_map<std::string, uint32_t> textures;
     std::unordered_map<std::string, uint32_t> materials;
     std::unordered_map<std::string, StaticMesh> static_meshes;
 
     ScopedSignalListener<double, double> on_mouse_move;
     ScopedSignalListener<double, double> on_scroll;
+
+    PlantEnvironment env;
 };
 
 } // namespace world

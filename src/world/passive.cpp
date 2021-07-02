@@ -10,7 +10,7 @@ entt::entity spawn_grass(gfx::FrameContext& fcx, World& w) {
     entt::entity e = w.reg.create();
 
     MeshComponent mesh;
-    mesh.mesh = w.static_mesh("sphere");
+    mesh.mesh = w.static_mesh("cube");
     mesh.material = w.material("metal");
     mesh.uv_scale = {1.f, 1.f};
 
@@ -18,6 +18,7 @@ entt::entity spawn_grass(gfx::FrameContext& fcx, World& w) {
 
     w.reg.emplace<MeshComponent>(e, mesh);
     w.reg.emplace<TransformComponent>(e);
+    w.reg.emplace<PassiveComponent>(e);
 
     return e;
 }

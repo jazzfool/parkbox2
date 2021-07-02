@@ -44,4 +44,10 @@ struct Texture {
     VkImageView view;
 };
 
+struct BufferCopy final {
+    VkDeviceSize src_offset;
+    VkDeviceSize dst_offset;
+    VkDeviceSize size;
+};
+
 } // namespace gfx

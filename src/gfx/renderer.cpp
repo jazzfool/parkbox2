@@ -27,6 +27,8 @@ void Renderer::init(Context& cx) {
     composite_pass.init(fcx);
     resolve_pass.init(fcx);
     shadow_pass.init(fcx);
+    ssao_pass.init(fcx);
+    prepass_pass.init(fcx);
 
     world.begin(fcx);
 
@@ -40,6 +42,8 @@ void Renderer::cleanup() {
 
     world.end(fcx);
 
+    prepass_pass.cleanup(fcx);
+    ssao_pass.cleanup(fcx);
     shadow_pass.cleanup(fcx);
     resolve_pass.cleanup(fcx);
     composite_pass.cleanup(fcx);
@@ -56,6 +60,9 @@ void Renderer::cleanup() {
 }
 
 void Renderer::run() {
+    time = 0.0;
+    curr_time = glfwGetTime();
+
     while (!glfwWindowShouldClose(cx->window)) {
         glfwPollEvents();
         render();
@@ -72,7 +79,15 @@ void Renderer::render() {
     FrameContext fcx{*cx};
     fcx.begin();
 
-    world.update(fcx);
+    const double new_time = glfwGetTime();
+    double frame_time = new_time - curr_time;
+    curr_time = new_time;
+    while (frame_time > 0.0) {
+        const float dt = std::min(frame_time, 1.0 / 60.0);
+        world.update(fcx, dt);
+        frame_time -= dt;
+        time += dt;
+    }
 
     cx->scene.storage.update(fcx);
     cx->scene.pass.prepare(fcx);
@@ -92,8 +107,10 @@ void Renderer::render() {
              static_cast<GFXPass*>(&composite_pass),
              static_cast<GFXPass*>(&resolve_pass),
              static_cast<GFXPass*>(&shadow_pass),
+             static_cast<GFXPass*>(&prepass_pass),
+             static_cast<GFXPass*>(&ssao_pass),
          }) {
-        pass->add_resources(graph);
+        pass->add_resources(fcx, graph);
         for (RenderPass p : pass->pass(fcx))
             graph.push_pass(p);
     }

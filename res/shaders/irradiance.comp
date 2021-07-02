@@ -1,11 +1,13 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive : require
+
+#include "common.glsl"
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform samplerCube env_map;
 layout(binding = 1, rgba32f) uniform imageCube irrad_map;
-
-const float PI = 3.1415926535897932384626433832795;
 
 const vec3 view_pos = vec3(0, 0, 0);
 
@@ -48,7 +50,7 @@ void main() {
         vec3 right = normalize(cross(up, N));
         up = normalize(cross(N, right));
 
-        //float sample_delta = 0.025;
+        // float sample_delta = 0.025;
         float sample_delta = 0.001;
         uint num_samples = 0;
         for (float phi = 0.0; phi < 2.0 * PI; phi += sample_delta) {

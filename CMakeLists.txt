@@ -27,11 +27,17 @@ set(SOURCE
     src/gfx/indirect.cpp
     src/gfx/resolve.cpp
     src/gfx/shadow.cpp
+    src/gfx/ssao.cpp
+    src/gfx/prepass.cpp
+    src/gfx/rt_cache.cpp
 
     src/world/world.cpp
     src/world/mesh.cpp
     src/world/passive.cpp
     src/world/camera.cpp
+    src/world/viz.cpp
+    src/world/meshlib.cpp
+    src/world/plant.cpp
 )
 
 add_executable(parkbox ${SOURCE})

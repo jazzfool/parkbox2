@@ -15,7 +15,7 @@ class GFXPass {
     virtual void init(FrameContext& fcx) = 0;
     virtual void cleanup(FrameContext& fcx) = 0;
 
-    virtual void add_resources(RenderGraph& rg) = 0;
+    virtual void add_resources(FrameContext& fcx, RenderGraph& rg) = 0;
     virtual std::vector<RenderPass> pass(FrameContext& fcx) = 0;
 };
 

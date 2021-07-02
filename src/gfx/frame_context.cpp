@@ -27,6 +27,24 @@ void FrameContext::copy(Buffer src, Buffer dst) {
     vkCmdCopyBuffer(cmd, src.buffer, dst.buffer, 1, &info);
 }
 
+void FrameContext::multicopy(Buffer src, Buffer dst, tcb::span<BufferCopy> copies) {
+    PK_ASSERT(!copies.empty());
+
+    std::vector<VkBufferCopy> buffer_copies;
+    buffer_copies.reserve(copies.size());
+
+    for (const BufferCopy& copy : copies) {
+        VkBufferCopy info;
+        info.srcOffset = src.offset + copy.src_offset;
+        info.dstOffset = dst.offset + copy.dst_offset;
+        info.size = copy.size;
+
+        buffer_copies.push_back(info);
+    }
+
+    vkCmdCopyBuffer(cmd, src.buffer, dst.buffer, buffer_copies.size(), buffer_copies.data());
+}
+
 void FrameContext::copy_to_image(Buffer src, Image dst, VkImageLayout layout, uint32_t bytes_per_pixel, VkImageSubresourceLayers subresource) {
     VkBufferImageCopy info;
     info.imageSubresource = subresource;

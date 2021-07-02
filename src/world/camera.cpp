@@ -39,16 +39,16 @@ void set_camera_position(CameraComponent& camera) {
     camera.pos = camera.center - dir * camera.length;
 }
 
-void camera_system(gfx::FrameContext& fcx, World& world) {
-    static constexpr float MOVE_SPEED = 0.05f;
+void camera_system(gfx::FrameContext& fcx, World& world, float dt) {
+    static constexpr float MOVE_SPEED = 5.f;
 
     for (auto [e, camera] : world.reg.view<CameraComponent>().each()) {
         const float dz = (glfwGetKey(fcx.cx.window, GLFW_KEY_W) | glfwGetKey(fcx.cx.window, GLFW_KEY_UP) - glfwGetKey(fcx.cx.window, GLFW_KEY_S) |
                              glfwGetKey(fcx.cx.window, GLFW_KEY_DOWN)) *
-                         MOVE_SPEED;
+                         MOVE_SPEED * dt;
         const float dx = (glfwGetKey(fcx.cx.window, GLFW_KEY_D) | glfwGetKey(fcx.cx.window, GLFW_KEY_RIGHT) - glfwGetKey(fcx.cx.window, GLFW_KEY_A) |
                              glfwGetKey(fcx.cx.window, GLFW_KEY_LEFT)) *
-                         MOVE_SPEED;
+                         MOVE_SPEED * dt;
 
         camera.center += glm::vec3{std::cos(radians(camera.yaw)), 0.f, std::sin(radians(camera.yaw))} * dz;
         camera.center += glm::normalize(glm::cross(camera.forward, camera.up)) * dx;

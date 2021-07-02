@@ -28,7 +28,7 @@ struct CameraComponent {
 };
 
 entt::entity spawn_camera(World& world);
-void camera_system(gfx::FrameContext& fcx, World& world);
+void camera_system(gfx::FrameContext& fcx, World& world, float dt);
 void camera_look(gfx::Context& cx, World& world, float x, float y);
 void camera_zoom(gfx::Context& cx, World& world, float x, float y);
 

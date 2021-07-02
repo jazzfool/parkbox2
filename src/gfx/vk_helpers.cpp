@@ -241,7 +241,7 @@ LoadedMesh load_mesh(const std::string& file) {
 }
 
 void vk_mapped_write(Allocator& alloc, Buffer buf, const void* data, std::size_t size) {
-    ::memcpy(buf.pmap, data, size);
+    ::memcpy(static_cast<uint8_t*>(buf.pmap) + buf.offset, data, size);
     vk_log(vmaFlushAllocation(alloc.allocator, buf.allocation, buf.offset, size));
 }
 

@@ -10,6 +10,8 @@ namespace world {
 
 class World;
 
+struct PassiveComponent final {};
+
 entt::entity spawn_grass(gfx::FrameContext& fcx, World& w);
 
 void passive_system(gfx::FrameContext& fcx, World& w);

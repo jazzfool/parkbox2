@@ -157,25 +157,6 @@ void PBRGraphicsPass::init(FrameContext& fcx) {
     load_shader(fcx.cx.shader_cache, "prefilter.comp", VK_SHADER_STAGE_COMPUTE_BIT);
     // load_shader(fcx.cx.shader_cache, "irradiance.comp", VK_SHADER_STAGE_COMPUTE_BIT);
 
-    TextureDesc desc;
-    desc.width = fcx.cx.width;
-    desc.height = fcx.cx.height;
-    desc.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    desc.samples = VK_SAMPLE_COUNT_4_BIT;
-
-    out = create_texture(fcx.cx, desc);
-
-    TextureDesc depth_desc;
-    depth_desc.width = fcx.cx.width;
-    depth_desc.height = fcx.cx.height;
-    depth_desc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_desc.format = VK_FORMAT_D32_SFLOAT;
-    depth_desc.aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depth_desc.samples = desc.samples;
-
-    depth = create_texture(fcx.cx, depth_desc);
-
     VkBufferCreateInfo bci = {};
     bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bci.size = sizeof(SceneUniforms);
@@ -662,8 +643,6 @@ void PBRGraphicsPass::init(FrameContext& fcx) {
 }
 
 void PBRGraphicsPass::cleanup(FrameContext& fcx) {
-    destroy_texture(fcx.cx, depth);
-    destroy_texture(fcx.cx, out);
     destroy_texture(fcx.cx, ec_dfg_lut);
     destroy_texture(fcx.cx, ibl_dfg_lut);
     destroy_texture(fcx.cx, prefilter);
@@ -671,18 +650,23 @@ void PBRGraphicsPass::cleanup(FrameContext& fcx) {
     fcx.cx.alloc.destroy(ubo);
 }
 
-void PBRGraphicsPass::add_resources(RenderGraph& rg) {
+void PBRGraphicsPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
+    TextureDesc desc;
+    desc.width = fcx.cx.width;
+    desc.height = fcx.cx.height;
+    desc.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    desc.samples = VK_SAMPLE_COUNT_4_BIT;
+
+    const Texture out = fcx.cx.rt_cache.get("pbr.out", desc);
+
     PassAttachment out_attachment;
     out_attachment.tex = out;
     out_attachment.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
 
     rg.push_attachment({"pbr.out"}, out_attachment);
 
-    PassAttachment depth_attachment;
-    depth_attachment.tex = depth;
-    depth_attachment.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    rg.push_attachment({"pbr.depth"}, depth_attachment);
+    rg.push_buffer({"pbr.ubo"}, {ubo});
 }
 
 std::vector<RenderPass> PBRGraphicsPass::pass(FrameContext& fcx) {
@@ -695,8 +679,9 @@ std::vector<RenderPass> PBRGraphicsPass::pass(FrameContext& fcx) {
     pass.layers = 1;
 
     pass.push_color_output({"pbr.out"}, vk_clear_color(glm::vec4{2.f, 2.f, 2.f, 255.f} / 255.f));
-    pass.set_depth_stencil({"pbr.depth"}, vk_clear_depth(1.f, 0));
-    pass.push_texture_input({"shadow.map"});
+    pass.set_depth_stencil({"prepass.depth.msaa"}, {});
+    pass.push_texture_input({"shadow.buffer"});
+    pass.push_texture_input({"gtao.out"});
     pass.set_exec([this](FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp) { render(fcx, rg, rp); });
 
     return {pass};
@@ -730,21 +715,6 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
     prefilter_sci.minLod = 0.f;
     prefilter_sci.maxLod = 8.f;
 
-    VkSamplerCreateInfo shadow_sci = {};
-    shadow_sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    shadow_sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    shadow_sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    shadow_sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    shadow_sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    shadow_sci.minFilter = VK_FILTER_LINEAR;
-    shadow_sci.magFilter = VK_FILTER_LINEAR;
-    shadow_sci.minLod = 0.f;
-    shadow_sci.maxLod = 1.f;
-    shadow_sci.maxAnisotropy = 1.f;
-    shadow_sci.mipLodBias = 0.f;
-    shadow_sci.compareEnable = VK_TRUE;
-    shadow_sci.compareOp = VK_COMPARE_OP_LESS;
-
     DescriptorSetInfo set_info;
     set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     set_info.bind_buffer(fcx.cx.scene.pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
@@ -757,8 +727,10 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
     set_info.bind_texture(irrad, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_buffer(ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     set_info.bind_texture(
-        rg.attachment({"shadow.map"}).tex, fcx.cx.sampler_cache.get(shadow_sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        rg.attachment({"shadow.buffer"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_buffer(fcx.cx.renderer->shadow_pass.ubo, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    set_info.bind_texture(
+        rg.attachment({"gtao.out"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
 
@@ -767,7 +739,7 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
         builder.add_shader(fcx.cx.shader_cache.get("pbr.vs"), VK_SHADER_STAGE_VERTEX_BIT);
         builder.add_shader(fcx.cx.shader_cache.get("pbr.fs"), VK_SHADER_STAGE_FRAGMENT_BIT);
         builder.add_attachment(vk_color_blend_attachment_state());
-        builder.set_depth_stencil_state(vk_depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL));
+        builder.set_depth_stencil_state(vk_depth_stencil_create_info(true, false, VK_COMPARE_OP_EQUAL));
         builder.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         builder.vertex_input<Vertex>();
         builder.set_samples(VK_SAMPLE_COUNT_4_BIT);

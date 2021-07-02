@@ -1,11 +1,12 @@
 #pragma once
 
 #include "gfx_pass.hpp"
+#include "types.hpp"
 #include "descriptor_cache.hpp"
 
 namespace gfx {
 
-class ResolvePass final : public GFXPass {
+class PrepassPass final : public GFXPass {
   public:
     void init(FrameContext& fcx) override;
     void cleanup(FrameContext& fcx) override;
@@ -13,10 +14,10 @@ class ResolvePass final : public GFXPass {
     void add_resources(FrameContext& fcx, RenderGraph& rg) override;
     std::vector<RenderPass> pass(FrameContext& fcx) override;
 
-    void render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp);
-
   private:
-    DescriptorKey key;
+    void render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass pass);
+
+    DescriptorKey desc_key;
 };
 
 } // namespace gfx
