@@ -46,21 +46,21 @@ void SSAOPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
     desc.view_type = VK_IMAGE_VIEW_TYPE_2D;
     desc.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-    const Texture out_a = fcx.cx.rt_cache.get("gtao.out.a", desc);
-    const Texture out_b = fcx.cx.rt_cache.get("gtao.out.b", desc);
+    const Texture out_a = fcx.cx.rt_cache.get("ssao.out.a", desc);
+    const Texture out_b = fcx.cx.rt_cache.get("ssao.out.b", desc);
 
     PassAttachment pa;
     pa.tex = use_a ? out_a : out_b;
     pa.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
-    rg.push_attachment({"gtao.out"}, pa);
+    rg.push_attachment({"ssao.out"}, pa);
 
     PassAttachment prev_pa;
     prev_pa.tex = use_a ? out_b : out_a;
     prev_pa.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
-    rg.push_attachment({"gtao.prev"}, prev_pa);
+    rg.push_attachment({"ssao.prev"}, prev_pa);
 
     if (!first) {
-        rg.push_initial_layout({"gtao.prev"}, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        rg.push_initial_layout({"ssao.prev"}, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     } else {
         first = false;
     }
@@ -69,18 +69,18 @@ void SSAOPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
 }
 
 std::vector<RenderPass> SSAOPass::pass(FrameContext& fcx) {
-    const glm::mat4 mats[3] = {glm::inverse(fcx.cx.renderer->pbr_pass.uniforms.cam_proj), fcx.cx.renderer->pbr_pass.uniforms.cam_view, prev_vp};
+    const glm::mat4 mats[3] = {glm::inverse(fcx.cx.scene.uniforms.cam_proj), fcx.cx.scene.uniforms.cam_view, prev_vp};
     vk_mapped_write(fcx.cx.alloc, ubo, &mats[0], sizeof(glm::mat4) * 3);
-    prev_vp = fcx.cx.renderer->pbr_pass.uniforms.cam_proj;
+    prev_vp = fcx.cx.scene.uniforms.cam_proj;
 
-    const Texture out_a = fcx.cx.rt_cache.get("gtao.out.a", {});
+    const Texture out_a = fcx.cx.rt_cache.get("ssao.out.a", {});
 
     RenderPass pass;
     pass.width = out_a.image.extent.width;
     pass.height = out_a.image.extent.height;
     pass.layers = 1;
-    pass.push_color_output({"gtao.out"}, vk_clear_color({0.f, 0.f, 0.f, 0.f}));
-    pass.push_texture_input({"gtao.prev"});
+    pass.push_color_output({"ssao.out"}, vk_clear_color({0.f, 0.f, 0.f, 0.f}));
+    pass.push_texture_input({"ssao.prev"});
     pass.push_texture_input({"prepass.depth_normal"});
     pass.set_exec(std::bind(&SSAOPass::render, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
@@ -88,7 +88,7 @@ std::vector<RenderPass> SSAOPass::pass(FrameContext& fcx) {
 }
 
 void SSAOPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass pass) {
-    const Texture out_a = fcx.cx.rt_cache.get("gtao.out.a", {});
+    const Texture out_a = fcx.cx.rt_cache.get("ssao.out.a", {});
 
     const VkViewport viewport = vk_viewport(0.f, 0.f, static_cast<float>(out_a.image.extent.width), static_cast<float>(out_a.image.extent.height), 0.f, 1.f);
     const VkRect2D scissor = vk_rect(0, 0, out_a.image.extent.width, out_a.image.extent.height);
@@ -97,12 +97,12 @@ void SSAOPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass pas
     set_info.bind_texture(
         rg.attachment({"prepass.depth_normal"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_texture(
-        rg.attachment({"gtao.prev"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        rg.attachment({"ssao.prev"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_buffer(ubo, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
 
-    if (!fcx.cx.pipeline_cache.contains("gtao.pipeline")) {
+    if (!fcx.cx.pipeline_cache.contains("ssao.pipeline")) {
         VkPipelineRasterizationStateCreateInfo prsci = vk_rasterization_state_create_info(VK_POLYGON_MODE_FILL);
         prsci.cullMode = VK_CULL_MODE_NONE;
 
@@ -116,10 +116,10 @@ void SSAOPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass pas
         builder.push_desc_set(set_info);
         builder.push_constant(0, sizeof(float), VK_SHADER_STAGE_FRAGMENT_BIT);
 
-        fcx.cx.pipeline_cache.add("gtao.pipeline", builder.info());
+        fcx.cx.pipeline_cache.add("ssao.pipeline", builder.info());
     }
 
-    const Pipeline pipeline = fcx.cx.pipeline_cache.get(pass, 0, "gtao.pipeline");
+    const Pipeline pipeline = fcx.cx.pipeline_cache.get(pass, 0, "ssao.pipeline");
 
     vkCmdBindPipeline(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
     vkCmdBindDescriptorSets(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &set.set, 0, nullptr);

@@ -7,6 +7,7 @@
 #include "shadow.hpp"
 #include "ssao.hpp"
 #include "prepass.hpp"
+#include "ui.hpp"
 
 #include <vector>
 #include <array>
@@ -29,6 +30,8 @@ class Renderer final {
     ShadowPass shadow_pass;
     SSAOPass ssao_pass;
     PrepassPass prepass_pass;
+
+    UIRenderer ui;
 
   private:
     void render();

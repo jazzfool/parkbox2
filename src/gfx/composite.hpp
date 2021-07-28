@@ -5,6 +5,8 @@
 
 namespace gfx {
 
+class UIRenderer;
+
 class CompositePass final : public GFXPass {
   public:
     void init(FrameContext& fcx) override;
@@ -15,8 +17,11 @@ class CompositePass final : public GFXPass {
 
     void render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp);
 
+    UIRenderer* ui;
+
   private:
     DescriptorKey key;
+    DescriptorKey key2;
 };
 
 } // namespace gfx

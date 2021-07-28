@@ -3,6 +3,7 @@
 #include "render_graph.hpp"
 #include "frame_context.hpp"
 #include "context.hpp"
+#include "ui.hpp"
 
 namespace gfx {
 
@@ -40,6 +41,7 @@ std::vector<RenderPass> CompositePass::pass(FrameContext& fcx) {
 
     pass.push_color_output({"composite.out"}, vk_clear_color(0.f, 0.f, 0.f, 1.f));
     pass.push_texture_input({"composite.in"});
+    pass.set_pre_exec([this](FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp) { ui->late_init(fcx, rp); });
     pass.set_exec([this](FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp) { render(fcx, rg, rp); });
 
     return {pass};
@@ -79,6 +81,8 @@ void CompositePass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPas
     vkCmdSetScissor(fcx.cmd, 0, 1, &scissor);
 
     vkCmdDraw(fcx.cmd, 3, 1, 0, 0);
+
+    ui->end(fcx);
 }
 
 } // namespace gfx

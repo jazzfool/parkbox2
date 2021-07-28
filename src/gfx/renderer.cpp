@@ -42,6 +42,8 @@ void Renderer::cleanup() {
 
     world.end(fcx);
 
+    ui.cleanup(fcx.cx);
+
     prepass_pass.cleanup(fcx);
     ssao_pass.cleanup(fcx);
     shadow_pass.cleanup(fcx);
@@ -79,18 +81,23 @@ void Renderer::render() {
     FrameContext fcx{*cx};
     fcx.begin();
 
-    const double new_time = glfwGetTime();
-    double frame_time = new_time - curr_time;
-    curr_time = new_time;
-    while (frame_time > 0.0) {
-        const float dt = std::min(frame_time, 1.0 / 60.0);
-        world.update(fcx, dt);
-        frame_time -= dt;
-        time += dt;
+    composite_pass.ui = &ui;
+
+    if (ui.begin()) {
+        const double new_time = glfwGetTime();
+        double frame_time = new_time - curr_time;
+        curr_time = new_time;
+        while (frame_time > 0.0) {
+            const float dt = std::min(frame_time, 1.0 / 60.0);
+            world.update(fcx, dt);
+            frame_time -= dt;
+            time += dt;
+        }
+
+        world.ui();
     }
 
-    cx->scene.storage.update(fcx);
-    cx->scene.pass.prepare(fcx);
+    cx->scene.update(fcx);
 
     RenderGraph graph;
 

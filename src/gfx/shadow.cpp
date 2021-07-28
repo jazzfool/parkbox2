@@ -61,7 +61,7 @@ ShadowPass::Uniforms ShadowPass::compute_cascades(Context& cx, glm::vec3 jitter)
         };
 
         // Project frustum corners into world space
-        glm::mat4 inv_cam = glm::inverse(cx.renderer->pbr_pass.uniforms.cam_proj);
+        glm::mat4 inv_cam = glm::inverse(cx.scene.uniforms.cam_proj);
         for (glm::vec3& corner : frustum_corners) {
             glm::vec4 inv_corner = inv_cam * glm::vec4{corner, 1.0f};
             corner = glm::vec3{inv_corner / inv_corner.w};
@@ -89,9 +89,8 @@ ShadowPass::Uniforms ShadowPass::compute_cascades(Context& cx, glm::vec3 jitter)
         glm::vec3 max_extents = glm::vec3{radius};
         glm::vec3 min_extents = -max_extents;
 
-        glm::mat4 light_view_matrix =
-            glm::lookAt(frustum_center - glm::vec3{cx.renderer->pbr_pass.uniforms.sun_dir} * -min_extents.z, frustum_center, {0.f, 1.f, 0.f}) *
-            glm::eulerAngleXYZ(jitter.x, jitter.y, jitter.z);
+        glm::mat4 light_view_matrix = glm::lookAt(frustum_center - glm::vec3{cx.scene.uniforms.sun_dir} * -min_extents.z, frustum_center, {0.f, 1.f, 0.f}) *
+                                      glm::eulerAngleXYZ(jitter.x, jitter.y, jitter.z);
         glm::mat4 light_ortho_matrix = glm::ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, 0.f, max_extents.z - min_extents.z);
 
         out.views[i] = light_view_matrix;
@@ -145,13 +144,13 @@ void ShadowPass::init(FrameContext& fcx) {
     VkBufferCreateInfo bci = {};
     bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bci.size = sizeof(Uniforms);
-    bci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
+    ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_GPU_ONLY, false);
 
     bci.size = sizeof(glm::mat4) * 3;
-    buf_ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
+    buf_ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_GPU_ONLY, false);
 }
 
 void ShadowPass::cleanup(FrameContext& fcx) {
@@ -210,6 +209,8 @@ void ShadowPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
     prev_buf_pa.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
     rg.push_attachment({"shadow.buffer.input"}, prev_buf_pa);
 
+    rg.push_buffer({"shadow.ubo"}, {ubo});
+
     use_a = !use_a;
 }
 
@@ -218,12 +219,11 @@ std::vector<RenderPass> ShadowPass::pass(FrameContext& fcx) {
     static std::mt19937_64 mt{std::random_device{}()};
 
     const Uniforms uniforms = compute_cascades(fcx.cx, glm::vec3{dist(mt), dist(mt), dist(mt)} * 0.01f);
-    vk_mapped_write(fcx.cx.alloc, ubo, &uniforms, sizeof(Uniforms));
+    fcx.stage(ubo, &uniforms);
 
-    const std::array<glm::mat4, 3> view_mats = {
-        glm::inverse(fcx.cx.renderer->pbr_pass.uniforms.cam_proj), fcx.cx.renderer->pbr_pass.uniforms.cam_view, prev_vp};
-    vk_mapped_write(fcx.cx.alloc, buf_ubo, view_mats.data(), sizeof(glm::mat4) * 3);
-    prev_vp = fcx.cx.renderer->pbr_pass.uniforms.cam_proj;
+    const std::array<glm::mat4, 3> view_mats = {glm::inverse(fcx.cx.scene.uniforms.cam_proj), fcx.cx.scene.uniforms.cam_view, prev_vp};
+    fcx.stage(buf_ubo, view_mats.data());
+    prev_vp = fcx.cx.scene.uniforms.cam_proj;
 
     std::vector<RenderPass> passes;
 

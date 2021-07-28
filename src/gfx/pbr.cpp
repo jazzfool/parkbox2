@@ -157,14 +157,6 @@ void PBRGraphicsPass::init(FrameContext& fcx) {
     load_shader(fcx.cx.shader_cache, "prefilter.comp", VK_SHADER_STAGE_COMPUTE_BIT);
     // load_shader(fcx.cx.shader_cache, "irradiance.comp", VK_SHADER_STAGE_COMPUTE_BIT);
 
-    VkBufferCreateInfo bci = {};
-    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bci.size = sizeof(SceneUniforms);
-    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-
-    ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
-
     TextureDesc dfg_lut_desc;
     dfg_lut_desc.width = 256;
     dfg_lut_desc.height = dfg_lut_desc.width;
@@ -638,8 +630,8 @@ void PBRGraphicsPass::init(FrameContext& fcx) {
 
     vkCmdPipelineBarrier(fcx.cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &prefilter_barrier);
 
-    uniforms.sun_dir = glm::normalize(glm::vec4{1.f, 2.f, -1.f, 0.f});
-    uniforms.sun_radiant_flux = (glm::vec4{255.f, 255.f, 250.f, 255.f} / 255.f) * 50.f;
+    fcx.cx.scene.uniforms.sun_dir = glm::normalize(glm::vec4{1.f, 2.f, -1.f, 0.f});
+    fcx.cx.scene.uniforms.sun_radiant_flux = (glm::vec4{255.f, 255.f, 250.f, 255.f} / 255.f) * 50.f;
 }
 
 void PBRGraphicsPass::cleanup(FrameContext& fcx) {
@@ -647,7 +639,6 @@ void PBRGraphicsPass::cleanup(FrameContext& fcx) {
     destroy_texture(fcx.cx, ibl_dfg_lut);
     destroy_texture(fcx.cx, prefilter);
     destroy_texture(fcx.cx, irrad);
-    fcx.cx.alloc.destroy(ubo);
 }
 
 void PBRGraphicsPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
@@ -665,13 +656,9 @@ void PBRGraphicsPass::add_resources(FrameContext& fcx, RenderGraph& rg) {
     out_attachment.subresource = vk_subresource_range(0, 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT);
 
     rg.push_attachment({"pbr.out"}, out_attachment);
-
-    rg.push_buffer({"pbr.ubo"}, {ubo});
 }
 
 std::vector<RenderPass> PBRGraphicsPass::pass(FrameContext& fcx) {
-    vk_mapped_write(fcx.cx.alloc, ubo, &uniforms, sizeof(SceneUniforms));
-
     RenderPass pass;
 
     pass.width = fcx.cx.width;
@@ -681,7 +668,7 @@ std::vector<RenderPass> PBRGraphicsPass::pass(FrameContext& fcx) {
     pass.push_color_output({"pbr.out"}, vk_clear_color(glm::vec4{2.f, 2.f, 2.f, 255.f} / 255.f));
     pass.set_depth_stencil({"prepass.depth.msaa"}, {});
     pass.push_texture_input({"shadow.buffer"});
-    pass.push_texture_input({"gtao.out"});
+    pass.push_texture_input({"ssao.out"});
     pass.set_exec([this](FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp) { render(fcx, rg, rp); });
 
     return {pass};
@@ -725,12 +712,12 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
     set_info.bind_texture(ibl_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_texture(prefilter, fcx.cx.sampler_cache.get(prefilter_sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     set_info.bind_texture(irrad, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_buffer(ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    set_info.bind_buffer(fcx.cx.scene.ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     set_info.bind_texture(
         rg.attachment({"shadow.buffer"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_buffer(fcx.cx.renderer->shadow_pass.ubo, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    set_info.bind_buffer(rg.buffer({"shadow.ubo"}).buffer, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     set_info.bind_texture(
-        rg.attachment({"gtao.out"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        rg.attachment({"ssao.out"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
 

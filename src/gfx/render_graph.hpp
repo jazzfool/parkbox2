@@ -62,6 +62,7 @@ class RenderPass final {
     void push_dependency(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt = false);
     void push_dependent(Name name, VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, bool virt = false);
 
+    void set_pre_exec(std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> pre_exec);
     void set_exec(std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> exec);
 
     uint32_t width = 0;
@@ -86,6 +87,7 @@ class RenderPass final {
     std::vector<std::pair<Name, Dependency>> dependencies;
     std::vector<std::pair<Name, Dependency>> dependents;
 
+    std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> pre_exec;
     std::function<void(FrameContext&, const class RenderGraph&, VkRenderPass)> exec;
 };
 
@@ -109,6 +111,7 @@ class RenderGraphCache {
 };
 
 // Render graphs are a handy abstraction for automatically handling synchronization between render passes.
+// They're also utilized in the codebase to pass around shared uniform buffers by name.
 class RenderGraph final {
   public:
     void push_pass(RenderPass pass);

@@ -6,6 +6,7 @@
 #include "helpers.hpp"
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 
 namespace world {
 
@@ -42,6 +43,9 @@ void set_camera_position(CameraComponent& camera) {
 void camera_system(gfx::FrameContext& fcx, World& world, float dt) {
     static constexpr float MOVE_SPEED = 5.f;
 
+    if (ImGui::GetIO().WantCaptureKeyboard)
+        return;
+
     for (auto [e, camera] : world.reg.view<CameraComponent>().each()) {
         const float dz = (glfwGetKey(fcx.cx.window, GLFW_KEY_W) | glfwGetKey(fcx.cx.window, GLFW_KEY_UP) - glfwGetKey(fcx.cx.window, GLFW_KEY_S) |
                              glfwGetKey(fcx.cx.window, GLFW_KEY_DOWN)) *
@@ -59,6 +63,9 @@ void camera_system(gfx::FrameContext& fcx, World& world, float dt) {
 
 void camera_look(gfx::Context& cx, World& world, float x, float y) {
     static constexpr float SENSITIVITY = 0.1f;
+
+    if (ImGui::GetIO().WantCaptureMouse)
+        return;
 
     for (auto [e, camera] : world.reg.view<CameraComponent>().each()) {
         if (glfwGetMouseButton(cx.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
@@ -92,6 +99,9 @@ void camera_look(gfx::Context& cx, World& world, float x, float y) {
 
 void camera_zoom(gfx::Context& cx, World& world, float x, float y) {
     static constexpr float SENSITIVITY = 0.25f;
+
+    if (ImGui::GetIO().WantCaptureMouse)
+        return;
 
     for (auto [e, camera] : world.reg.view<CameraComponent>().each()) {
         camera.length = clamp(camera.length - y * SENSITIVITY, 2.f, 20.f);

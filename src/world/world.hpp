@@ -42,6 +42,7 @@ class World final {
     uint32_t material(const std::string& name) const;
     gfx::IndirectMeshKey static_mesh(const std::string& name) const;
 
+    void ui();
     void update(gfx::FrameContext& fcx, float dt);
 
     entt::registry reg;

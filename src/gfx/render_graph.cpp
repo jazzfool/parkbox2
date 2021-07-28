@@ -43,6 +43,10 @@ void RenderPass::push_dependent(Name name, VkImageLayout layout, VkPipelineStage
     dependents.push_back(std::make_pair(name, Dependency{layout, stage, access, virt}));
 }
 
+void RenderPass::set_pre_exec(std::function<void(FrameContext&, const RenderGraph&, VkRenderPass)> pre_exec) {
+    this->pre_exec = std::move(pre_exec);
+}
+
 void RenderPass::set_exec(std::function<void(FrameContext&, const RenderGraph&, VkRenderPass)> exec) {
     this->exec = std::move(exec);
 }
@@ -544,6 +548,9 @@ void RenderGraph::exec(FrameContext& fcx, RenderGraphCache& cache) {
         rpbi.clearValueCount = clear_values.size();
         rpbi.pClearValues = clear_values.data();
         rpbi.renderArea = vk_rect(0, 0, pass.width, pass.height);
+
+        if (pass.pre_exec)
+            pass.pre_exec(fcx, *this, rp);
 
         vkCmdBeginRenderPass(fcx.cmd, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 

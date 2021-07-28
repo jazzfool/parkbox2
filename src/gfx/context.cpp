@@ -151,13 +151,11 @@ void Context::sc_init(int32_t width, int32_t height) {
 }
 
 void Context::post_init(FrameContext& fcx) {
-    scene.pass.init(fcx);
-    scene.storage.init(fcx);
+    scene.init(fcx);
 }
 
 void Context::pre_cleanup(FrameContext& fcx) {
-    scene.pass.cleanup(fcx);
-    scene.storage.cleanup(fcx);
+    scene.cleanup(fcx);
 }
 
 void Context::sc_cleanup() {

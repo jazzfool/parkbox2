@@ -8,16 +8,10 @@
 
 namespace gfx {
 
+class UIRenderer;
+
 class PBRGraphicsPass final : public GFXPass {
   public:
-    struct SceneUniforms {
-        glm::vec4 cam_pos;
-        glm::vec4 sun_dir;
-        glm::vec4 sun_radiant_flux;
-        glm::mat4 cam_proj;
-        glm::mat4 cam_view;
-    };
-
     void init(FrameContext& fcx) override;
     void cleanup(FrameContext& fcx) override;
 
@@ -26,10 +20,7 @@ class PBRGraphicsPass final : public GFXPass {
 
     void render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp);
 
-    SceneUniforms uniforms;
-
   private:
-    Buffer ubo;
     Texture ec_dfg_lut;
     Texture ibl_dfg_lut;
     Texture prefilter;

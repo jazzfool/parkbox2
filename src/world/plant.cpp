@@ -89,7 +89,7 @@ void plant_system(gfx::FrameContext& fcx, World& world, PlantEnvironment& env) {
 
             PlantNode* chosen = candidates.front();
             for (PlantNode* candidate : candidates) {
-                if (!candidate->branches.empty()) {
+                if (candidate->branches.empty()) {
                     chosen = candidate;
                     break;
                 }
@@ -97,7 +97,7 @@ void plant_system(gfx::FrameContext& fcx, World& world, PlantEnvironment& env) {
 
             PlantNode branch;
             branch.radius = chosen->radius * 0.85f;
-            branch.growth_vector = glm::normalize(glm::vec3{dist11(mt), -dist01(mt), dist11(mt)}) * 0.0000005f;
+            branch.growth_vector = glm::normalize(glm::vec3{dist11(mt), -dist01(mt), dist11(mt)}) * 0.000001f;
             branch.direction = glm::normalize(chosen->growth_vector);
 
             if (!chosen->branches.empty()) {

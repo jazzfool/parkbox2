@@ -18,7 +18,7 @@ layout(set = 0, binding = 2) uniform InverseProjection {
     mat4 prev_view_proj;
 };
 
-const uint SAMPLES = 6;
+const uint SAMPLES = 4;
 const float RADIUS = 64.0;
 const uint STEPS = 3;
 
@@ -59,7 +59,6 @@ void main() {
     const vec3 view_pos = get_view_pos(uv, dn, inv_view_proj, view);
     const vec3 view_normal = get_view_normal(uv, dn, view);
     const vec3 view_dir = normalize(-view_pos);
-    const vec2 ao_size = textureSize(prev_ssao, 0).xy;
     const vec2 texel_size = 1.0 / vec2(textureSize(depth_normal, 0).xy);
 
     float step_size_pixels = RADIUS / (STEPS + 1);
@@ -67,17 +66,17 @@ void main() {
     const float alpha = 2.0 * PI / SAMPLES;
     float AO = 0;
 
-    vec4 rand = vec4(jitter * jitter, abs(rand(vec2(jitter))), abs(rand(vec2(jitter * jitter, jitter))), abs(rand(vec2(jitter, 1.0 - jitter))));
+    uvec2 xy = uvec2(jitter * in_uv * textureSize(prev_ssao, 0).xy);
+    float noise = dither[xy.x % 4][xy.y % 4];
 
     for (float dir_idx = 0; dir_idx < SAMPLES; ++dir_idx) {
         float angle = alpha * dir_idx;
-        // float angle = jitter;
 
         // Compute normalized 2D direction
-        vec2 dir = rotate_dir(vec2(cos(angle), sin(angle)), rand.xy);
+        vec2 dir = rotate_dir(vec2(cos(angle), sin(angle)), vec2(rand(vec2(jitter + uv)), -rand(vec2(jitter * jitter - uv))));
 
         // Jitter starting sample within the first step
-        float ray_pixels = (rand.z * step_size_pixels + 1.0);
+        float ray_pixels = (noise * step_size_pixels + 1.0);
 
         for (float step_idx = 0; step_idx < STEPS; ++step_idx) {
             vec2 snapped_uv = round(ray_pixels * dir) * texel_size + uv;
@@ -89,7 +88,7 @@ void main() {
         }
     }
 
-    AO *= 4.0 / (SAMPLES * STEPS);
+    AO *= 3.0 / (SAMPLES * STEPS);
     out_ao = clamp(1.0 - AO * 2.0, 0, 1);
 
     const vec3 world_pos = reconstruct_world_pos(dn.a, uv, inv_view_proj);

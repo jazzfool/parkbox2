@@ -17,6 +17,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/component_wise.hpp>
 #include <glm/gtx/norm.hpp>
+#include <imgui.h>
 
 namespace world {
 
@@ -223,6 +224,15 @@ gfx::IndirectMeshKey World::static_mesh(const std::string& name) const {
     return gfx::indirect_mesh_key(sm.vertices, sm.indices);
 }
 
+void World::ui() {
+    ImGui::SetNextWindowBgAlpha(1.f);
+    ImGui::Begin("Growth Stats");
+
+    ImGui::Button("Click me!");
+
+    ImGui::End();
+}
+
 void World::update(gfx::FrameContext& fcx, float dt) {
     env.growth = 1000.f;
     env.sun_dir = glm::normalize(-glm::vec3{1.f, 2.f, -1.f});
@@ -233,9 +243,9 @@ void World::update(gfx::FrameContext& fcx, float dt) {
     passive_system(fcx, *this);
 
     const CameraComponent cam = reg.get<CameraComponent>(main_camera);
-    fcx.cx.renderer->pbr_pass.uniforms.cam_pos = {cam.pos, 0.f};
-    fcx.cx.renderer->pbr_pass.uniforms.cam_view = glm::lookAt(cam.pos, cam.pos + cam.forward, cam.up);
-    fcx.cx.renderer->pbr_pass.uniforms.cam_proj = perspective * fcx.cx.renderer->pbr_pass.uniforms.cam_view;
+    fcx.cx.scene.uniforms.cam_pos = {cam.pos, 0.f};
+    fcx.cx.scene.uniforms.cam_view = glm::lookAt(cam.pos, cam.pos + cam.forward, cam.up);
+    fcx.cx.scene.uniforms.cam_proj = perspective * fcx.cx.scene.uniforms.cam_view;
 
     const glm::mat4 projtrans = glm::transpose(perspective);
     const glm::vec4 frustum_x = v3norm(projtrans[3] + projtrans[0]);
@@ -246,7 +256,7 @@ void World::update(gfx::FrameContext& fcx, float dt) {
     fcx.cx.scene.pass.uniforms.frustum[2] = frustum_y.y;
     fcx.cx.scene.pass.uniforms.frustum[3] = frustum_y.z;
     fcx.cx.scene.pass.uniforms.near_far = glm::vec2{0.1f, 100.f};
-    fcx.cx.scene.pass.uniforms.view = fcx.cx.renderer->pbr_pass.uniforms.cam_view;
+    fcx.cx.scene.pass.uniforms.view = fcx.cx.scene.uniforms.cam_view;
 }
 
 void World::mouse_move(double x, double y) {

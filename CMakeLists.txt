@@ -30,6 +30,8 @@ set(SOURCE
     src/gfx/ssao.cpp
     src/gfx/prepass.cpp
     src/gfx/rt_cache.cpp
+    src/gfx/ui.cpp
+    src/gfx/scene.cpp
 
     src/world/world.cpp
     src/world/mesh.cpp
@@ -83,9 +85,35 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/tinyobjloader)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/ftl)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/glm)
 
+find_package(Vulkan REQUIRED)
+
+add_library(imgui
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui.cpp"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui_demo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui_draw.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui_widgets.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/imgui_tables.cpp"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/backends/imgui_impl_vulkan.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/backends/imgui_impl_glfw.cpp"
+)
+
+target_include_directories(imgui
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ext/imgui/backends"
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/ext/glfw/include"
+)
+
+target_link_libraries(imgui PRIVATE Vulkan::Vulkan)
+target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+
 target_compile_definitions(parkbox PRIVATE VK_NO_PROTOTYPES GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
-target_link_libraries(parkbox PRIVATE glfw volk vk-bootstrap spdlog shaderc shaderc_util EnTT tinyobjloader ftl glm)
+target_link_libraries(parkbox PRIVATE glfw volk vk-bootstrap spdlog shaderc shaderc_util EnTT tinyobjloader ftl glm imgui)
 
 target_include_directories(parkbox PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

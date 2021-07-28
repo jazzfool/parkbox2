@@ -6,7 +6,7 @@ layout(location = 0) in vec2 in_uv;
 
 layout(location = 0) out float out_shadow;
 
-layout(set = 0, binding = 0) uniform LightProjction {
+layout(set = 0, binding = 0) uniform LightProjection {
     mat4 views[NUM_CASCADES];
     mat4 view_proj[NUM_CASCADES];
     vec4 cascade_splits;
@@ -48,7 +48,7 @@ float shadow(vec3 pos, vec3 mv_pos, vec3 normal) {
     cascade += 2 * uint(ranges[1] && !ranges[2]);
     cascade += 3 * uint(ranges[2]);
 
-    vec4 sc = (bias_mat * view_proj[cascade]) * vec4(pos + normal * 0.006 * dither[int(gl_FragCoord.x) % 4][int(gl_FragCoord.y) % 4], 1.0);
+    vec4 sc = (bias_mat * view_proj[cascade]) * vec4(pos + normal * 0.006, 1.0);
     sc = sc / sc.w;
 
     float z = sc.z;
@@ -106,6 +106,8 @@ void main() {
 
     bool depth_reject = abs(prev_depth - depth) > 0.001;
 
-    float alpha = 0.05 * float(!depth_reject) + float(depth_reject);
+    float dither_val = dither[int(gl_FragCoord.x) % 4][int(gl_FragCoord.y) % 4];
+
+    float alpha = 0.05 * float(!depth_reject) * dither_val + float(depth_reject);
     out_shadow = out_shadow * alpha + (1.0 - alpha) * prev_shadow;
 }
