@@ -151,7 +151,7 @@ inline std::array<std::vector<glm::vec2>, 2> integrate_dfg(ftl::TaskScheduler& s
 
 void PBRGraphicsPass::init(FrameContext& fcx) {
     load_shader(fcx.cx.shader_cache, "pbr.vs", VK_SHADER_STAGE_VERTEX_BIT);
-    load_shader(fcx.cx.shader_cache, "pbr.fs", VK_SHADER_STAGE_FRAGMENT_BIT);
+    // load_shader(fcx.cx.shader_cache, "pbr.fs", VK_SHADER_STAGE_FRAGMENT_BIT);
     load_shader(fcx.cx.shader_cache, "cubemap.vs", VK_SHADER_STAGE_VERTEX_BIT);
     load_shader(fcx.cx.shader_cache, "equirectangular_to_cubemap.fs", VK_SHADER_STAGE_FRAGMENT_BIT);
     load_shader(fcx.cx.shader_cache, "prefilter.comp", VK_SHADER_STAGE_COMPUTE_BIT);
@@ -632,6 +632,59 @@ void PBRGraphicsPass::init(FrameContext& fcx) {
 
     fcx.cx.scene.uniforms.sun_dir = glm::normalize(glm::vec4{1.f, 2.f, -1.f, 0.f});
     fcx.cx.scene.uniforms.sun_radiant_flux = (glm::vec4{255.f, 255.f, 250.f, 255.f} / 255.f) * 50.f;
+
+    {
+        VkSamplerCreateInfo sci = {};
+        sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sci.minFilter = VK_FILTER_LINEAR;
+        sci.magFilter = VK_FILTER_LINEAR;
+        sci.anisotropyEnable = VK_TRUE;
+        sci.maxAnisotropy = 16.f;
+        sci.minLod = 0.f;
+        sci.maxLod = 8.f;
+
+        VkSamplerCreateInfo prefilter_sci = {};
+        prefilter_sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        prefilter_sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        prefilter_sci.minFilter = VK_FILTER_LINEAR;
+        prefilter_sci.magFilter = VK_FILTER_LINEAR;
+        prefilter_sci.minLod = 0.f;
+        prefilter_sci.maxLod = 8.f;
+
+        DescriptorSetInfo set_info;
+        set_info.bind_buffer({}, VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_buffer({}, VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_buffer(fcx.cx.scene.storage.material_buffer(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_textures(fcx.cx.scene.storage.get_textures(), fcx.cx.sampler_cache.get(sci), VK_SHADER_STAGE_FRAGMENT_BIT,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+        set_info.bind_texture(ec_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(ibl_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(prefilter, fcx.cx.sampler_cache.get(prefilter_sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(irrad, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_buffer(fcx.cx.scene.ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        set_info.bind_texture({}, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_buffer({}, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        set_info.bind_texture({}, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        SimplePipelineBuilder builder = SimplePipelineBuilder::begin(fcx.cx.dev, nullptr, fcx.cx.descriptor_cache, fcx.cx.pipeline_cache);
+        builder.add_shader(fcx.cx.shader_cache.get("pbr.vs"), VK_SHADER_STAGE_VERTEX_BIT);
+        // builder.add_shader(fcx.cx.shader_cache.get("pbr.fs"), VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.add_attachment(vk_color_blend_attachment_state());
+        builder.set_depth_stencil_state(vk_depth_stencil_create_info(true, false, VK_COMPARE_OP_EQUAL));
+        builder.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+        builder.vertex_input<Vertex>();
+        builder.set_samples(VK_SAMPLE_COUNT_4_BIT);
+        builder.push_desc_set(set_info);
+
+        fcx.cx.scene.passes.insert(fcx, "pbr", read_str(fmt::format("{}/shaders/{}", PK_RESOURCE_DIR, "pbr.fs")), builder.info());
+    }
 }
 
 void PBRGraphicsPass::cleanup(FrameContext& fcx) {
@@ -669,7 +722,7 @@ std::vector<RenderPass> PBRGraphicsPass::pass(FrameContext& fcx) {
     pass.set_depth_stencil({"prepass.depth.msaa"}, {});
     pass.push_texture_input({"shadow.buffer"});
     pass.push_texture_input({"ssao.out"});
-    pass.set_exec([this](FrameContext& fcx, const RenderGraph& rg, VkRenderPass rp) { render(fcx, rg, rp); });
+    pass.set_exec(mfbind(this, &PBRGraphicsPass::render));
 
     return {pass};
 }
@@ -678,72 +731,60 @@ void PBRGraphicsPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderP
     const VkViewport viewport = vk_viewport(0.f, 0.f, static_cast<float>(fcx.cx.width), static_cast<float>(fcx.cx.height), 0.f, 1.f);
     const VkRect2D scissor = vk_rect(0, 0, fcx.cx.width, fcx.cx.height);
 
-    VkSamplerCreateInfo sci = {};
-    sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    sci.minFilter = VK_FILTER_LINEAR;
-    sci.magFilter = VK_FILTER_LINEAR;
-    sci.anisotropyEnable = VK_TRUE;
-    sci.maxAnisotropy = 16.f;
-    sci.minLod = 0.f;
-    sci.maxLod = 8.f;
-
-    VkSamplerCreateInfo prefilter_sci = {};
-    prefilter_sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    prefilter_sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    prefilter_sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    prefilter_sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    prefilter_sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    prefilter_sci.minFilter = VK_FILTER_LINEAR;
-    prefilter_sci.magFilter = VK_FILTER_LINEAR;
-    prefilter_sci.minLod = 0.f;
-    prefilter_sci.maxLod = 8.f;
-
-    DescriptorSetInfo set_info;
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    set_info.bind_buffer(fcx.cx.scene.storage.material_buffer(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    set_info.bind_textures(
-        fcx.cx.scene.storage.get_textures(), fcx.cx.sampler_cache.get(sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_texture(ec_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_texture(ibl_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_texture(prefilter, fcx.cx.sampler_cache.get(prefilter_sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_texture(irrad, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_buffer(fcx.cx.scene.ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    set_info.bind_texture(
-        rg.attachment({"shadow.buffer"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    set_info.bind_buffer(rg.buffer({"shadow.ubo"}).buffer, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    set_info.bind_texture(
-        rg.attachment({"ssao.out"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-    const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
-
-    if (!fcx.cx.pipeline_cache.contains("pbr.pipeline")) {
-        SimplePipelineBuilder builder = SimplePipelineBuilder::begin(fcx.cx.dev, nullptr, fcx.cx.descriptor_cache, fcx.cx.pipeline_cache);
-        builder.add_shader(fcx.cx.shader_cache.get("pbr.vs"), VK_SHADER_STAGE_VERTEX_BIT);
-        builder.add_shader(fcx.cx.shader_cache.get("pbr.fs"), VK_SHADER_STAGE_FRAGMENT_BIT);
-        builder.add_attachment(vk_color_blend_attachment_state());
-        builder.set_depth_stencil_state(vk_depth_stencil_create_info(true, false, VK_COMPARE_OP_EQUAL));
-        builder.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-        builder.vertex_input<Vertex>();
-        builder.set_samples(VK_SAMPLE_COUNT_4_BIT);
-        builder.push_desc_set(set_info);
-
-        fcx.cx.pipeline_cache.add("pbr.pipeline", builder.info());
-    }
-
-    const Pipeline pipeline = fcx.cx.pipeline_cache.get(rp, 0, "pbr.pipeline");
-
-    vkCmdBindPipeline(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-    vkCmdBindDescriptorSets(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &set.set, 0, nullptr);
-
     vkCmdSetViewport(fcx.cmd, 0, 1, &viewport);
     vkCmdSetScissor(fcx.cmd, 0, 1, &scissor);
 
-    fcx.cx.scene.pass.execute(fcx.cmd, fcx.cx.scene.storage);
+    for (MaterialShadingPass::PassInfo* pass : fcx.cx.scene.passes.pass("pbr").all()) {
+        VkSamplerCreateInfo sci = {};
+        sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sci.minFilter = VK_FILTER_LINEAR;
+        sci.magFilter = VK_FILTER_LINEAR;
+        sci.anisotropyEnable = VK_TRUE;
+        sci.maxAnisotropy = 16.f;
+        sci.minLod = 0.f;
+        sci.maxLod = 8.f;
+
+        VkSamplerCreateInfo prefilter_sci = {};
+        prefilter_sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        prefilter_sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        prefilter_sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        prefilter_sci.minFilter = VK_FILTER_LINEAR;
+        prefilter_sci.magFilter = VK_FILTER_LINEAR;
+        prefilter_sci.minLod = 0.f;
+        prefilter_sci.maxLod = 8.f;
+
+        DescriptorSetInfo set_info;
+        set_info.bind_buffer(pass->pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_buffer(pass->pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_buffer(fcx.cx.scene.storage.material_buffer(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        set_info.bind_textures(fcx.cx.scene.storage.get_textures(), fcx.cx.sampler_cache.get(sci), VK_SHADER_STAGE_FRAGMENT_BIT,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+        set_info.bind_texture(ec_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(ibl_dfg_lut, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(prefilter, fcx.cx.sampler_cache.get(prefilter_sci), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_texture(irrad, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_buffer(fcx.cx.scene.ubo, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        set_info.bind_texture(
+            rg.attachment({"shadow.buffer"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        set_info.bind_buffer(rg.buffer({"shadow.ubo"}).buffer, VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        set_info.bind_texture(
+            rg.attachment({"ssao.out"}).tex, fcx.cx.sampler_cache.basic(), VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_keys.get(&pass->pass), set_info);
+
+        Pipeline pipeline = fcx.cx.pipeline_cache.get(rp, 0, pass->pipeline);
+
+        vkCmdBindPipeline(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+        vkCmdBindDescriptorSets(fcx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &set.set, 0, nullptr);
+
+        pass->pass.execute(fcx.cmd, fcx.cx.scene.storage);
+    }
 }
 
 } // namespace gfx

@@ -41,6 +41,7 @@ class ShadowPass final : public GFXPass {
     bool first;
     Buffer buf_ubo;
     glm::mat4 prev_vp;
+    float jitter_range;
 };
 
 } // namespace gfx

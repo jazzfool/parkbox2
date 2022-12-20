@@ -3,6 +3,7 @@
 #include "gfx_pass.hpp"
 #include "types.hpp"
 #include "descriptor_cache.hpp"
+#include "indirect.hpp"
 
 #include <glm/mat4x4.hpp>
 
@@ -26,7 +27,7 @@ class PBRGraphicsPass final : public GFXPass {
     Texture prefilter;
     Texture irrad;
 
-    DescriptorKey desc_key;
+    DescriptorKeyList<IndirectMeshPass*> desc_keys;
 };
 
 } // namespace gfx

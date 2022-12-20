@@ -1,6 +1,7 @@
 #pragma once
 
 #include "indirect.hpp"
+#include "material.hpp"
 
 namespace gfx {
 
@@ -22,9 +23,10 @@ struct Scene final {
     void update(FrameContext& fcx);
 
     IndirectStorage storage;
-    IndirectMeshPass pass;
     Uniforms uniforms;
     Buffer ubo;
+
+    MaterialPass passes;
 };
 
 } // namespace gfx

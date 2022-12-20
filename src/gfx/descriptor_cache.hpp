@@ -24,25 +24,37 @@ struct StoredDescriptorWrite final {
     }
 };
 
+struct StoredDescriptorSetLayoutCreateInfo final {
+    VkDescriptorSetLayoutCreateInfo info;
+    VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info;
+    std::vector<VkDescriptorBindingFlags> binding_flags;
+
+    void rebind() {
+        info.pNext = &binding_flags_info;
+        binding_flags_info.pBindingFlags = binding_flags.data();
+    }
+};
+
 class DescriptorSetInfo final {
   public:
     static constexpr inline std::size_t MAX_BINDINGS = 64;
 
     DescriptorSetInfo();
 
-    void bind_texture(
-        Texture texture, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    void bind_texture(Texture texture, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type,
+        VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkDescriptorBindingFlags flags = 0);
     void bind_textures(const std::vector<Texture>& textures, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type,
-        VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    void bind_buffer(Buffer buffer, VkShaderStageFlags stages, VkDescriptorType type);
+        VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkDescriptorBindingFlags flags = 0);
+    void bind_buffer(Buffer buffer, VkShaderStageFlags stages, VkDescriptorType type, VkDescriptorBindingFlags flags = 0);
 
-    VkDescriptorSetLayoutCreateInfo vk_layout() const;
+    StoredDescriptorSetLayoutCreateInfo vk_layout() const;
     std::vector<StoredDescriptorWrite> write(VkDevice dev, VkDescriptorSet set) const;
     std::vector<StoredDescriptorWrite> write_diff(VkDevice dev, tcb::span<const StoredDescriptorWrite> prev_writes, VkDescriptorSet set) const;
 
   private:
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     std::vector<StoredDescriptorWrite> writes;
+    std::vector<VkDescriptorBindingFlags> binding_flags;
 };
 
 struct DescriptorKey final {

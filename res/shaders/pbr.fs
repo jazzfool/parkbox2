@@ -9,11 +9,9 @@
 #define NUM_CASCADES 4
 
 struct Material {
-    uint albedo;
-    uint roughness;
-    uint metallic;
-    uint normal;
-    uint ao;
+    uint textures[8];
+    float scalars[4];
+    vec4 vectors[4];
 };
 
 layout(location = 0) flat in uint in_material;
@@ -67,6 +65,8 @@ vec3 get_normal_from_map(vec3 base_normal, vec3 texture_normal) {
     return normalize(TBN * tangent_normal);
 }
 
+{...}
+
 void main() {
     vec2 ibl_dfg = texture(ibl_dfg_lut, in_uv).rg;
     vec4 prefilter = texture(prefilter_map, vec3(0, 0, 0));
@@ -74,30 +74,13 @@ void main() {
     float shadow = texture(shadow_buf, gl_FragCoord.xy / textureSize(shadow_buf, 0).xy).r;
     float ssao_fac = texture(ssao, gl_FragCoord.xy / textureSize(shadow_buf, 0).xy).r;
 
-    Material in_material = material_buf.materials[in_material];
+    Material params = material_buf.materials[in_material];
+    PBRMaterial pbr_material = material(params);
 
-    vec4 albedo = texture(textures[in_material.albedo], in_uv);
-    vec4 roughness = texture(textures[in_material.roughness], in_uv);
-    vec4 metallic = texture(textures[in_material.metallic], in_uv);
-    vec3 normal = texture(textures[in_material.normal], in_uv).xyz;
-    vec4 ao = texture(textures[in_material.ao], in_uv);
-
-    albedo = pow(albedo, vec4(2.2));
-    normal = get_normal_from_map(in_normal, normal);
-
-    PBRMaterial material;
-    material.albedo = albedo.rgb;
-    material.roughness = roughness.r;
-    material.metallic = metallic.r;
-    material.normal = normal;
-    material.ao = ao.r;
-    material.world_pos = in_position;
-    material.reflectance = 0.04;
-
-    PBRComputed pbr_computed = pbr_compute(material, uniforms, ec_dfg_lut);
+    PBRComputed pbr_computed = pbr_compute(pbr_material, uniforms, ec_dfg_lut);
 
     out_color = vec4(0, 0, 0, 1);
 
-    out_color.rgb += pbr_sun_light(material, pbr_computed, uniforms.sun_dir.xyz, uniforms.sun_radiant_flux.xyz) * shadow;
-    out_color.rgb += pbr_ibl(material, pbr_computed, irradiance_map, prefilter_map, ibl_dfg_lut) * ssao_fac;
+    out_color.rgb += pbr_sun_light(pbr_material, pbr_computed, uniforms.sun_dir.xyz, uniforms.sun_radiant_flux.xyz) * shadow;
+    out_color.rgb += pbr_ibl(pbr_material, pbr_computed, irradiance_map, prefilter_map, ibl_dfg_lut) * ssao_fac;
 }

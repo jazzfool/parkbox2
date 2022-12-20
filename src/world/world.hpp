@@ -4,7 +4,6 @@
 #include "gfx/indirect.hpp"
 #include "gfx/mesh.hpp"
 #include "signal.hpp"
-#include "plant.hpp"
 
 #include <unordered_map>
 #include <string>
@@ -14,7 +13,7 @@
 namespace gfx {
 struct Context;
 class FrameContext;
-struct IndirectMaterial;
+struct MaterialInstance;
 } // namespace gfx
 
 namespace world {
@@ -31,11 +30,11 @@ class World final {
     void begin(gfx::FrameContext& fcx);
     void end(gfx::FrameContext& fcx);
 
-    gfx::IndirectObjectHandle add_object(gfx::Context& cx, uint32_t material, gfx::IndirectMeshKey mesh, glm::vec2 uv_scale);
-    void add_object(gfx::Context& cx, struct MeshComponent& mesh);
+    gfx::IndirectObjectHandle add_object(gfx::Context& cx, std::string_view shader_type, std::string_view shader, uint32_t material, gfx::IndirectMeshKey mesh, glm::vec2 uv_scale);
+    void add_object(gfx::Context& cx, std::string_view shader_type, std::string_view shader, struct MeshComponent& mesh);
     uint32_t add_texture(
         gfx::FrameContext& fcx, const std::string& name, std::string_view file, bool mipped = false, VkFormat format = VK_FORMAT_R8G8B8A8_SRGB);
-    uint32_t add_material(gfx::Context& cx, const std::string& name, gfx::IndirectMaterial mat);
+    uint32_t add_material(gfx::Context& cx, const std::string& name, gfx::MaterialInstance mat);
     gfx::IndirectMeshKey add_static_mesh(gfx::FrameContext& fcx, const std::string& name, std::string_view file);
 
     uint32_t texture(const std::string& name) const;
@@ -64,8 +63,6 @@ class World final {
 
     ScopedSignalListener<double, double> on_mouse_move;
     ScopedSignalListener<double, double> on_scroll;
-
-    PlantEnvironment env;
 };
 
 } // namespace world

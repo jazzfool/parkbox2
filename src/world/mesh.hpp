@@ -14,6 +14,8 @@ struct MeshComponent final {
     gfx::IndirectMeshKey mesh;
     uint32_t material;
     glm::vec2 uv_scale;
+    std::string shader_type;
+    std::string shader;
 };
 
 struct TransformComponent final {

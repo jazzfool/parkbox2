@@ -18,9 +18,9 @@ layout(set = 0, binding = 2) uniform InverseProjection {
     mat4 prev_view_proj;
 };
 
-const uint SAMPLES = 4;
+const uint SAMPLES = 8;
 const float RADIUS = 64.0;
-const uint STEPS = 3;
+const uint STEPS = 4;
 
 layout(push_constant) uniform PC {
     float jitter;

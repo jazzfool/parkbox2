@@ -1,3 +1,7 @@
 build/
 .vscode/
 .cache/
+.vs/
+vert.spv
+frag.spv
+CMakeSettings.json

@@ -5,6 +5,7 @@
 #include "context.hpp"
 #include "def.hpp"
 #include "helpers.hpp"
+#include "material.hpp"
 
 #include <array>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -59,12 +60,14 @@ void IndirectStorage::init(FrameContext& fcx) {
     bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     ix_arena = fcx.cx.alloc.create_arena(FreeListAllocator{MAX_MESHES * MAX_INDICES_PER_MESH * sizeof(uint32_t)}, bci, VMA_MEMORY_USAGE_GPU_ONLY, false);
 
-    bci.size = MAX_MATERIALS * sizeof(IndirectMaterial);
+    bci.size = MAX_MATERIALS * sizeof(MaterialInstance);
     bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     material_buf = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_GPU_ONLY, false);
 
     bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     material_staging = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_ONLY, true);
+
+    textures.reserve(MAX_TEXTURES);
 }
 
 void IndirectStorage::cleanup(FrameContext& fcx) {
@@ -82,8 +85,8 @@ void IndirectStorage::update(FrameContext& fcx) {
     if (dirty) {
         dirty = false;
 
-        ::memcpy(material_staging.pmap, mats.data(), sizeof(IndirectMaterial) * mats.size());
-        vk_log(vmaFlushAllocation(fcx.cx.alloc.allocator, material_staging.allocation, material_staging.offset, sizeof(IndirectMaterial) * mats.size()));
+        ::memcpy(material_staging.pmap, mats.data(), sizeof(MaterialInstance) * mats.size());
+        vk_log(vmaFlushAllocation(fcx.cx.alloc.allocator, material_staging.allocation, material_staging.offset, sizeof(MaterialInstance) * mats.size()));
 
         fcx.copy(material_staging, material_buf);
 
@@ -93,11 +96,12 @@ void IndirectStorage::update(FrameContext& fcx) {
 }
 
 uint32_t IndirectStorage::push_texture(Texture tex) {
+    assert(textures.size() < MAX_TEXTURES);
     textures.push_back(tex);
     return textures.size() - 1;
 }
 
-uint32_t IndirectStorage::push_material(IndirectMaterial mat) {
+uint32_t IndirectStorage::push_material(MaterialInstance mat) {
     dirty = true;
     mats.push_back(mat);
     return mats.size() - 1;
@@ -135,7 +139,7 @@ const std::vector<Texture>& IndirectStorage::get_textures() const {
     return textures;
 }
 
-void IndirectMeshPass::init(FrameContext& fcx) {
+void IndirectMeshPass::init(FrameContext& fcx, Buffer ubo) {
     load_shader(fcx.cx.shader_cache, "cull.comp", VK_SHADER_STAGE_COMPUTE_BIT);
 
     VkBufferCreateInfo bci = {};
@@ -159,10 +163,6 @@ void IndirectMeshPass::init(FrameContext& fcx) {
 
     bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     draw_staging = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_ONLY, true);
-
-    bci.size = sizeof(Uniforms);
-    bci.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_CPU_TO_GPU, true);
 
     DescriptorKey desc_key;
 
@@ -207,7 +207,6 @@ void IndirectMeshPass::cleanup(FrameContext& fcx) {
     fcx.cx.alloc.destroy(instance_indices_buf);
     fcx.cx.alloc.destroy(draw_cmds);
     fcx.cx.alloc.destroy(draw_staging);
-    fcx.cx.alloc.destroy(ubo);
 
     vkDestroyPipeline(fcx.cx.dev, pipeline, nullptr);
     vkDestroyPipelineLayout(fcx.cx.dev, layout, nullptr);
@@ -321,8 +320,6 @@ void IndirectMeshPass::prepare(FrameContext& fcx) {
         instance_writes.clear();
         instance_updates.clear();
     }
-
-    vk_mapped_write(fcx.cx.alloc, ubo, &uniforms, sizeof(Uniforms));
 
     const std::array<VkBufferMemoryBarrier, 2> barriers = {vk_buffer_barrier(draw_cmds), vk_buffer_barrier(instance_buf)};
     vkCmdPipelineBarrier(

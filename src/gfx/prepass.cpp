@@ -78,8 +78,9 @@ void PrepassPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass 
     const VkRect2D scissor = vk_rect(0, 0, fcx.cx.width, fcx.cx.height);
 
     DescriptorSetInfo set_info;
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    set_info.bind_buffer(fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    set_info.bind_buffer(
+        fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     set_info.bind_buffer(fcx.cx.scene.ubo, VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
@@ -106,7 +107,7 @@ void PrepassPass::render(FrameContext& fcx, const RenderGraph& rg, VkRenderPass 
     vkCmdSetViewport(fcx.cmd, 0, 1, &viewport);
     vkCmdSetScissor(fcx.cmd, 0, 1, &scissor);
 
-    fcx.cx.scene.pass.execute(fcx.cmd, fcx.cx.scene.storage);
+    fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").execute(fcx.cmd, fcx.cx.scene.storage);
 }
 
 } // namespace gfx

@@ -86,7 +86,8 @@ bool Context::init(GLFWwindow* window) {
 
     VkPhysicalDeviceVulkan12Features features_12 = {};
     features_12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    features_12.runtimeDescriptorArray = true;
+    features_12.runtimeDescriptorArray = VK_TRUE;
+    features_12.descriptorBindingPartiallyBound = VK_TRUE;
 
     vkb::PhysicalDeviceSelector vkb_physdev_selector{vkb_instance_result.value()};
     vkb_physdev_selector.set_surface(surface);

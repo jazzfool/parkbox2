@@ -6,7 +6,7 @@
 namespace gfx {
 
 void Scene::init(FrameContext& fcx) {
-    pass.init(fcx);
+    passes.init(fcx);
     storage.init(fcx);
 
     VkBufferCreateInfo bci = {};
@@ -22,12 +22,12 @@ void Scene::cleanup(FrameContext& fcx) {
     fcx.cx.alloc.destroy(ubo);
 
     storage.cleanup(fcx);
-    pass.cleanup(fcx);
+    passes.cleanup(fcx);
 }
 
 void Scene::update(FrameContext& fcx) {
     storage.update(fcx);
-    pass.prepare(fcx);
+    passes.prepare(fcx);
     fcx.stage(ubo, &uniforms);
 }
 

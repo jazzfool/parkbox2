@@ -32,14 +32,12 @@ set(SOURCE
     src/gfx/rt_cache.cpp
     src/gfx/ui.cpp
     src/gfx/scene.cpp
+    src/gfx/material.cpp
 
     src/world/world.cpp
     src/world/mesh.cpp
-    src/world/passive.cpp
     src/world/camera.cpp
-    src/world/viz.cpp
     src/world/meshlib.cpp
-    src/world/plant.cpp
 )
 
 add_executable(parkbox ${SOURCE})
@@ -71,10 +69,14 @@ if (WIN32)
 	set(CMAKE_ASM_MASM_CREATE_STATIC_LIBRARY "<CMAKE_AR> /OUT:<TARGET> <LINK_FLAGS> <OBJECTS>")
 endif()
 
-set(FTL_BUILD_TESTS OFF CACHE BOOL "Build FiberTaskingLib tests")
-set(FTL_BUILD_BENCHMARKS OFF CACHE BOOL "Build FiberTaskingLib benchmarks")
-set(FTL_BUILD_EXAMPLES OFF CACHE BOOL "Build FiberTaskingLib examples")
-set(FTL_CPP_17 ON CACHE BOOL "Enable C++17 features")
+set(FTL_BUILD_TESTS OFF)
+set(FTL_BUILD_BENCHMARKS OFF)
+set(FTL_BUILD_EXAMPLES OFF)
+set(FTL_CPP_17 ON)
+
+set(GLFW_BUILD_EXAMPLES OFF)
+set(GLFW_BUILD_TESTS OFF)
+set(GLFW_BUILD_DOCS OFF)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/glfw)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/volk)

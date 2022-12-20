@@ -4,6 +4,7 @@
 #include "cache.hpp"
 #include "allocator.hpp"
 #include "descriptor_cache.hpp"
+#include "pipeline_cache.hpp"
 
 #include <unordered_map>
 #include <optional>
@@ -35,13 +36,7 @@ namespace gfx {
 
 class FrameContext;
 
-struct IndirectMaterial final {
-    uint32_t albedo;
-    uint32_t roughness;
-    uint32_t metallic;
-    uint32_t normal;
-    uint32_t ao;
-};
+struct MaterialInstance;
 
 struct IndirectObject final {
     glm::mat4 transform;
@@ -62,6 +57,7 @@ class IndirectStorage final {
     static constexpr inline uint32_t MAX_VERTICES_PER_MESH = 32000;
     static constexpr inline uint32_t MAX_INDICES_PER_MESH = 64000;
     static constexpr inline uint32_t MAX_MATERIALS = 512;
+    static constexpr inline uint32_t MAX_TEXTURES = 64;
 
     void init(FrameContext& fcx);
     void cleanup(FrameContext& fcx);
@@ -69,7 +65,7 @@ class IndirectStorage final {
     void update(FrameContext& fcx);
 
     uint32_t push_texture(Texture tex);
-    uint32_t push_material(IndirectMaterial mat);
+    uint32_t push_material(MaterialInstance mat);
 
     BufferAllocation allocate_vertices(uint64_t num_verts);
     void free_vertices(const BufferAllocation& alloc);
@@ -93,7 +89,7 @@ class IndirectStorage final {
     Buffer material_staging;
 
     std::vector<Texture> textures;
-    std::vector<IndirectMaterial> mats;
+    std::vector<MaterialInstance> mats;
 
     bool dirty;
 };
@@ -107,13 +103,7 @@ class IndirectMeshPass final {
   public:
     static constexpr inline uint32_t MAX_OBJECTS = 4096;
 
-    struct Uniforms final {
-        glm::vec4 frustum;
-        glm::vec2 near_far;
-        glm::mat4 view;
-    };
-
-    void init(FrameContext& fcx);
+    void init(FrameContext& fcx, Buffer ubo);
     void cleanup(FrameContext& fcx);
 
     void push_mesh(IndirectMeshKey mesh, glm::vec3 center, float radius);
@@ -130,8 +120,6 @@ class IndirectMeshPass final {
 
     Buffer instance_buffer() const;
     Buffer instance_indices_buffer() const;
-
-    Uniforms uniforms;
 
   private:
     struct GPUInstance final {
@@ -152,7 +140,6 @@ class IndirectMeshPass final {
     Buffer instance_indices_buf;
     Buffer draw_cmds;
     Buffer draw_staging;
-    Buffer ubo;
 
     std::unordered_map<IndirectMeshKey, Cache<std::pair<IndirectObject, std::size_t>>> batches;
     std::unordered_map<IndirectMeshKey, std::pair<glm::vec3, float>> mesh_bounds;

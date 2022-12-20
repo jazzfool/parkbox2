@@ -13,6 +13,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <random>
+#include <imgui.h>
+#include <imgui_internal.h>
 
 namespace gfx {
 
@@ -151,6 +153,8 @@ void ShadowPass::init(FrameContext& fcx) {
 
     bci.size = sizeof(glm::mat4) * 3;
     buf_ubo = fcx.cx.alloc.create_buffer(bci, VMA_MEMORY_USAGE_GPU_ONLY, false);
+
+    jitter_range = 0.01f;
 }
 
 void ShadowPass::cleanup(FrameContext& fcx) {
@@ -218,7 +222,15 @@ std::vector<RenderPass> ShadowPass::pass(FrameContext& fcx) {
     static std::uniform_real_distribution<float> dist{-1.f, 1.f};
     static std::mt19937_64 mt{std::random_device{}()};
 
-    const Uniforms uniforms = compute_cascades(fcx.cx, glm::vec3{dist(mt), dist(mt), dist(mt)} * 0.01f);
+    if (ImGui::GetCurrentContext() && ImGui::GetCurrentContext()->WithinFrameScope) {
+        ImGui::Begin("Shadows");
+
+        ImGui::SliderFloat("Shadow jitter range", &jitter_range, 0.f, 0.1f, "%.3f", 1.f);
+
+        ImGui::End();
+    }
+
+    const Uniforms uniforms = compute_cascades(fcx.cx, glm::vec3{dist(mt), dist(mt), dist(mt)} * jitter_range);
     fcx.stage(ubo, &uniforms);
 
     const std::array<glm::mat4, 3> view_mats = {glm::inverse(fcx.cx.scene.uniforms.cam_proj), fcx.cx.scene.uniforms.cam_view, prev_vp};
@@ -258,8 +270,9 @@ void ShadowPass::render(uint32_t cascade, FrameContext& fcx, const RenderGraph& 
     const VkRect2D scissor = vk_rect(0, 0, DIM, DIM);
 
     DescriptorSetInfo set_info;
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    set_info.bind_buffer(fcx.cx.scene.pass.instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    set_info.bind_buffer(fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").instance_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    set_info.bind_buffer(
+        fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").instance_indices_buffer(), VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     set_info.bind_buffer(ubo, VK_SHADER_STAGE_VERTEX_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     const DescriptorSet set = fcx.cx.descriptor_cache.get_set(desc_key, set_info);
@@ -291,7 +304,7 @@ void ShadowPass::render(uint32_t cascade, FrameContext& fcx, const RenderGraph& 
     vkCmdSetScissor(fcx.cmd, 0, 1, &scissor);
     vkCmdPushConstants(fcx.cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t), &cascade);
 
-    fcx.cx.scene.pass.execute(fcx.cmd, fcx.cx.scene.storage);
+    fcx.cx.scene.passes.pass("pbr").pass("pbr_textured").execute(fcx.cmd, fcx.cx.scene.storage);
 }
 
 void ShadowPass::render_buffer(FrameContext& fcx, const RenderGraph& rg, VkRenderPass pass) {

@@ -19,6 +19,8 @@ class GFXPass;
 
 class Renderer final {
   public:
+    static constexpr uint64_t FRAMES_IN_FLIGHT = 2;
+
     void init(Context& cx);
     void cleanup();
 
@@ -34,15 +36,19 @@ class Renderer final {
     UIRenderer ui;
 
   private:
+    struct FrameData final {
+        VkSemaphore present_semaphore;
+        VkSemaphore render_semaphore;
+        VkFence render_fence;
+    };
+
     void render();
+    FrameData& current_frame();
 
     Context* cx;
-
-    VkSemaphore present_semaphore;
-    VkSemaphore render_semaphore;
-    VkFence render_fence;
-
+    std::vector<FrameData> frame_data;
     world::World world;
+    uint64_t frame_num;
 
     double time;
     double curr_time;

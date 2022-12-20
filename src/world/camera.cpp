@@ -11,9 +11,9 @@
 namespace world {
 
 entt::entity spawn_camera(World& world) {
-    entt::entity e = world.reg.create();
+    const auto e = world.reg.create();
 
-    CameraComponent cam;
+    CameraComponent cam = {};
     cam.pos = {0.f, 0.f, 0.f};
     cam.forward = {0.f, 0.f, -1.f};
     cam.up = {0.f, 1.f, 0.f};
@@ -41,7 +41,7 @@ void set_camera_position(CameraComponent& camera) {
 }
 
 void camera_system(gfx::FrameContext& fcx, World& world, float dt) {
-    static constexpr float MOVE_SPEED = 5.f;
+    static constexpr auto MOVE_SPEED = 5.f;
 
     if (ImGui::GetIO().WantCaptureKeyboard)
         return;
@@ -62,7 +62,7 @@ void camera_system(gfx::FrameContext& fcx, World& world, float dt) {
 }
 
 void camera_look(gfx::Context& cx, World& world, float x, float y) {
-    static constexpr float SENSITIVITY = 0.1f;
+    static constexpr auto SENSITIVITY = 0.1f;
 
     if (ImGui::GetIO().WantCaptureMouse)
         return;
@@ -74,8 +74,8 @@ void camera_look(gfx::Context& cx, World& world, float x, float y) {
                 camera.last_y = y;
             }
 
-            const float dx = (x - camera.last_x) * SENSITIVITY;
-            const float dy = (y - camera.last_y) * SENSITIVITY;
+            const auto dx = (x - camera.last_x) * SENSITIVITY;
+            const auto dy = (y - camera.last_y) * SENSITIVITY;
 
             camera.yaw += dx;
             camera.pitch += dy;
@@ -98,7 +98,7 @@ void camera_look(gfx::Context& cx, World& world, float x, float y) {
 }
 
 void camera_zoom(gfx::Context& cx, World& world, float x, float y) {
-    static constexpr float SENSITIVITY = 0.25f;
+    static constexpr auto SENSITIVITY = 0.25f;
 
     if (ImGui::GetIO().WantCaptureMouse)
         return;

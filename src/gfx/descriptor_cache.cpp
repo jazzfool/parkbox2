@@ -40,7 +40,8 @@ DescriptorSetInfo::DescriptorSetInfo() {
     bindings.reserve(MAX_BINDINGS);
 }
 
-void DescriptorSetInfo::bind_texture(Texture texture, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type, VkImageLayout layout) {
+void DescriptorSetInfo::bind_texture(
+    Texture texture, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type, VkImageLayout layout, VkDescriptorBindingFlags flags) {
     PK_ASSERT(bindings.size() < MAX_BINDINGS);
 
     VkDescriptorSetLayoutBinding binding = {};
@@ -66,18 +67,20 @@ void DescriptorSetInfo::bind_texture(Texture texture, VkSampler sampler, VkShade
     write.write.pImageInfo = write.images.data();
 
     writes.push_back(write);
+
+    binding_flags.push_back(flags);
 }
 
-void DescriptorSetInfo::bind_textures(
-    const std::vector<Texture>& textures, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type, VkImageLayout layout) {
+void DescriptorSetInfo::bind_textures(const std::vector<Texture>& textures, VkSampler sampler, VkShaderStageFlags stages, VkDescriptorType type,
+    VkImageLayout layout, VkDescriptorBindingFlags flags) {
     PK_ASSERT(bindings.size() < MAX_BINDINGS);
 
-    if (textures.empty())
+    if (textures.capacity() == 0)
         return;
 
     VkDescriptorSetLayoutBinding binding = {};
     binding.binding = bindings.size();
-    binding.descriptorCount = textures.size();
+    binding.descriptorCount = textures.capacity();
     binding.descriptorType = type;
     binding.stageFlags = stages;
 
@@ -102,9 +105,11 @@ void DescriptorSetInfo::bind_textures(
     write.write.pImageInfo = write.images.data();
 
     writes.push_back(write);
+
+    binding_flags.push_back(flags);
 }
 
-void DescriptorSetInfo::bind_buffer(Buffer buffer, VkShaderStageFlags stages, VkDescriptorType type) {
+void DescriptorSetInfo::bind_buffer(Buffer buffer, VkShaderStageFlags stages, VkDescriptorType type, VkDescriptorBindingFlags flags) {
     PK_ASSERT(bindings.size() < MAX_BINDINGS);
 
     VkDescriptorSetLayoutBinding binding = {};
@@ -130,13 +135,24 @@ void DescriptorSetInfo::bind_buffer(Buffer buffer, VkShaderStageFlags stages, Vk
     write.write.pBufferInfo = write.buffers.data();
 
     writes.push_back(write);
+
+    binding_flags.push_back(flags);
 }
 
-VkDescriptorSetLayoutCreateInfo DescriptorSetInfo::vk_layout() const {
-    VkDescriptorSetLayoutCreateInfo layout = {};
-    layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout.bindingCount = bindings.size();
-    layout.pBindings = bindings.data();
+StoredDescriptorSetLayoutCreateInfo DescriptorSetInfo::vk_layout() const {
+    StoredDescriptorSetLayoutCreateInfo layout = {};
+
+    layout.info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout.info.bindingCount = bindings.size();
+    layout.info.pBindings = bindings.data();
+    layout.info.pNext = &layout.binding_flags_info;
+
+    layout.binding_flags = binding_flags;
+
+    layout.binding_flags_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+    layout.binding_flags_info.bindingCount = bindings.size();
+    layout.binding_flags_info.pBindingFlags = layout.binding_flags.data();
+
     return layout;
 }
 
@@ -148,6 +164,9 @@ std::vector<StoredDescriptorWrite> DescriptorSetInfo::write(VkDevice dev, VkDesc
         write.dstSet = set;
         write.pImageInfo = writes[i].images.data();
         write.pBufferInfo = writes[i].buffers.data();
+        if (write.descriptorCount == 64) {
+            write.descriptorCount = 11;
+        }
         writes_cpy.push_back(write);
     }
     vkUpdateDescriptorSets(dev, writes_cpy.size(), writes_cpy.data(), 0, nullptr);
@@ -162,6 +181,10 @@ std::vector<StoredDescriptorWrite> DescriptorSetInfo::write_diff(VkDevice dev, t
         write.dstSet = set;
         write.pImageInfo = writes[i].images.data();
         write.pBufferInfo = writes[i].buffers.data();
+
+        if (write.descriptorCount == 64) {
+            write.descriptorCount = 11;
+        }
 
         VkWriteDescriptorSet prev_write = prev_writes[i].write;
         prev_write.pImageInfo = prev_writes[i].images.data();
@@ -201,14 +224,16 @@ void DescriptorCache::cleanup() {
 }
 
 VkDescriptorSetLayout DescriptorCache::get_layout(const DescriptorSetInfo& info) {
-    const VkDescriptorSetLayoutCreateInfo layout_info = info.vk_layout();
-    const std::size_t hash = std::hash<VkDescriptorSetLayoutCreateInfo>{}(layout_info);
+    StoredDescriptorSetLayoutCreateInfo layout_info = info.vk_layout();
+    layout_info.rebind();
+
+    const std::size_t hash = std::hash<VkDescriptorSetLayoutCreateInfo>{}(layout_info.info);
     if (layout_cache.count(hash)) {
         return layout_cache.at(hash);
     }
 
     VkDescriptorSetLayout layout;
-    vk_log(vkCreateDescriptorSetLayout(dev, &layout_info, nullptr, &layout));
+    vk_log(vkCreateDescriptorSetLayout(dev, &layout_info.info, nullptr, &layout));
 
     layout_cache.emplace(hash, layout);
 

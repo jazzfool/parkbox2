@@ -67,24 +67,27 @@ void ShaderCache::cleanup() {
     }
 }
 
-void ShaderCache::load(const std::string& name, VkShaderStageFlags stage) {
+void ShaderCache::load(std::string_view name, VkShaderStageFlags stage) {
     std::string path = fmt::format("{}/shaders/{}", PK_RESOURCE_DIR, name);
+    std::ifstream f;
+    f.open(path.data(), std::ios::in | std::ios::binary);
+    std::string src{std::istreambuf_iterator<char>{f}, std::istreambuf_iterator<char>{}};
+    f.close();
 
+    load_str(src, name, stage);
+}
+
+void ShaderCache::load_str(std::string shader, std::string_view name, VkShaderStageFlags stage) {
     static shaderc::Compiler compiler;
 
     shaderc::CompileOptions options;
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_1);
     options.SetIncluder(std::make_unique<FileIncluder>());
 
-    std::ifstream f;
-    f.open(path.data(), std::ios::in | std::ios::binary);
-    std::string src{std::istreambuf_iterator<char>{f}, std::istreambuf_iterator<char>{}};
-    f.close();
-
-    auto out = compiler.CompileGlslToSpv(src, vk_to_shaderc_stage(stage), name.data(), options);
+    auto out = compiler.CompileGlslToSpv(shader, vk_to_shaderc_stage(stage), name.data(), options);
 
     if (out.GetCompilationStatus() != shaderc_compilation_status_success) {
-        spdlog::error("failed to compile shader {}: {}", path, out.GetErrorMessage());
+        spdlog::error("failed to compile shader {}: {}", name, out.GetErrorMessage());
         return;
     }
 
@@ -95,18 +98,18 @@ void ShaderCache::load(const std::string& name, VkShaderStageFlags stage) {
     smci.pCode = spirv.data();
     smci.codeSize = spirv.size() * sizeof(uint32_t);
 
-    VkShaderModule shader;
-    vk_log(vkCreateShaderModule(cx->dev, &smci, nullptr, &shader));
+    VkShaderModule sm;
+    vk_log(vkCreateShaderModule(cx->dev, &smci, nullptr, &sm));
 
-    cache.emplace(name, shader);
+    cache.emplace(std::hash<std::string_view>{}(name), sm);
 }
 
-VkShaderModule ShaderCache::get(const std::string& name) {
-    return cache.at(name);
+VkShaderModule ShaderCache::get(std::string_view name) {
+    return cache.at(std::hash<std::string_view>{}(name));
 }
 
-bool ShaderCache::contains(const std::string& name) const {
-    return cache.count(name);
+bool ShaderCache::contains(std::string_view name) const {
+    return cache.count(std::hash<std::string_view>{}(name));
 }
 
 } // namespace gfx

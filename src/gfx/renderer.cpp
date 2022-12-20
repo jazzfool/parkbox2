@@ -14,9 +14,12 @@ namespace gfx {
 void Renderer::init(Context& cx) {
     this->cx = &cx;
 
-    present_semaphore = vk_create_semaphore(cx.dev);
-    render_semaphore = vk_create_semaphore(cx.dev);
-    render_fence = vk_create_fence(cx.dev, true);
+    frame_data.resize(FRAMES_IN_FLIGHT);
+    for (uint64_t i = 0; i < FRAMES_IN_FLIGHT; ++i) {
+        frame_data[i].present_semaphore = vk_create_semaphore(cx.dev);
+        frame_data[i].render_semaphore = vk_create_semaphore(cx.dev);
+        frame_data[i].render_fence = vk_create_fence(cx.dev, true);
+    }
 
     FrameContext fcx{cx};
     fcx.begin();
@@ -51,9 +54,11 @@ void Renderer::cleanup() {
     composite_pass.cleanup(fcx);
     pbr_pass.cleanup(fcx);
 
-    vkDestroySemaphore(cx->dev, present_semaphore, nullptr);
-    vkDestroySemaphore(cx->dev, render_semaphore, nullptr);
-    vkDestroyFence(cx->dev, render_fence, nullptr);
+    for (const auto& frame : frame_data) {
+        vkDestroySemaphore(cx->dev, frame.present_semaphore, nullptr);
+        vkDestroySemaphore(cx->dev, frame.render_semaphore, nullptr);
+        vkDestroyFence(cx->dev, frame.render_fence, nullptr);
+    }
 
     cx->pre_cleanup(fcx);
 
@@ -72,11 +77,13 @@ void Renderer::run() {
 }
 
 void Renderer::render() {
-    vk_log(vkWaitForFences(cx->dev, 1, &render_fence, true, 1000000000));
-    vk_log(vkResetFences(cx->dev, 1, &render_fence));
+    auto& frame = current_frame();
+
+    vk_log(vkWaitForFences(cx->dev, 1, &frame.render_fence, true, 1000000000));
+    vk_log(vkResetFences(cx->dev, 1, &frame.render_fence));
 
     uint32_t swap_idx = 0;
-    vk_log(vkAcquireNextImageKHR(cx->dev, cx->swapchain, 1000000000, present_semaphore, nullptr, &swap_idx));
+    vk_log(vkAcquireNextImageKHR(cx->dev, cx->swapchain, 1000000000, frame.present_semaphore, nullptr, &swap_idx));
 
     FrameContext fcx{*cx};
     fcx.begin();
@@ -135,25 +142,29 @@ void Renderer::render() {
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.pWaitDstStageMask = &wait_stage;
     submit.waitSemaphoreCount = 1;
-    submit.pWaitSemaphores = &present_semaphore;
+    submit.pWaitSemaphores = &frame.present_semaphore;
     submit.signalSemaphoreCount = 1;
-    submit.pSignalSemaphores = &render_semaphore;
+    submit.pSignalSemaphores = &frame.render_semaphore;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &fcx.cmd;
 
-    vk_log(vkQueueSubmit(cx->gfx_queue, 1, &submit, render_fence));
+    vk_log(vkQueueSubmit(cx->gfx_queue, 1, &submit, frame.render_fence));
 
     VkPresentInfoKHR present = {};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present.pSwapchains = &cx->swapchain;
     present.swapchainCount = 1;
-    present.pWaitSemaphores = &render_semaphore;
+    present.pWaitSemaphores = &frame.render_semaphore;
     present.waitSemaphoreCount = 1;
     present.pImageIndices = &swap_idx;
 
     vk_log(vkQueuePresentKHR(cx->gfx_queue, &present));
 
-    std::move(fcx).wait(render_fence);
+    std::move(fcx).wait(frame.render_fence);
+}
+
+Renderer::FrameData& Renderer::current_frame() {
+    return frame_data[frame_num % FRAMES_IN_FLIGHT];
 }
 
 } // namespace gfx

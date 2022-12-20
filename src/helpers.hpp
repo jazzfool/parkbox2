@@ -89,6 +89,19 @@ inline std::vector<uint8_t> read_binary(const std::string& path) {
     return v;
 }
 
+inline std::string read_str(std::string_view path) {
+    std::ifstream f;
+    f.open(path.data(), std::ios::in | std::ios::binary);
+    std::string s{std::istreambuf_iterator<char>{f}, std::istreambuf_iterator<char>{}};
+    f.close();
+    return s;
+}
+
+template <typename T, typename R, typename... Ts>
+auto mfbind(T* x, R (T::*f)(Ts...)) {
+    return [=](Ts... p) { return (x->*f)(p...); };
+}
+
 namespace std {
 
 template <typename T>
